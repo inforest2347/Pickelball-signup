@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>理論上匹克球</title>
+<style>
+  :root {
+    --green: #1f5f4a; --green-dark: #16463a; --green-light: #e6f0eb;
+    --bg: #f5f8f6; --line: #c9d6d0; --text: #222; --muted: #6b7a74;
+    --warn: #b4572e; --warn-bg: #fff4ea; --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); line-height: 1.55;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  header { background: var(--green); color: #fff; padding: 18px 16px 16px; }
+  header .kicker { font-size: 12px; letter-spacing: .15em; opacity: .8; }
+  header h1 { margin: 2px 0 0; font-size: 22px; }
+  main { padding: 16px 16px 40px; max-width: 560px; margin: 0 auto; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; color: var(--green-dark); margin: 0 0 12px; }
+  .banner { border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px; font-size: 14px;
+    background: var(--green-light); color: var(--green-dark); border-left: 4px solid var(--green); }
+  .banner.warn { background: var(--warn-bg); color: #7a3a17; border-left-color: var(--warn); }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  label.title { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  label.title .req { color: var(--warn); margin-left: 2px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  input[type=text], input[type=tel], select {
+    width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: #fff; color: var(--text); font-family: inherit; -webkit-appearance: none; appearance: none; min-height: 44px;
+  }
+  input:focus, select:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
+  .error-text { color: var(--warn); font-size: 13px; margin-top: 6px; display: none; }
+  .invalid .error-text { display: block; }
+  .invalid input { border-color: var(--warn); }
+  button { font-family: inherit; }
+  button.primary { width: 100%; font-size: 16px; font-weight: 600; padding: 14px; border: 0; border-radius: 12px; background: var(--green); color: #fff; }
+  button.primary:disabled { opacity: .55; }
+  button.ghost { width: 100%; font-size: 15px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--green-dark); }
+  button.act { font-size: 14px; font-weight: 600; padding: 8px 14px; border-radius: 999px; border: 0; background: var(--green); color: #fff; white-space: nowrap; }
+  button.act.alt { background: #fff; color: var(--green-dark); border: 1px solid var(--green); }
+  button.act.danger { background: #fff; color: var(--warn); border: 1px solid var(--warn); }
+  button.act.armed { background: var(--warn); color: #fff; border-color: var(--warn); }
+  button.act:disabled { opacity: .5; }
+  .center { text-align: center; padding: 48px 16px; }
+  .center .big { font-size: 20px; font-weight: 700; color: var(--green-dark); margin: 12px 0 8px; }
+  .center p { color: var(--muted); margin: 0 0 4px; font-size: 15px; white-space: pre-line; }
+  .spinner { width: 36px; height: 36px; margin: 0 auto; border: 3px solid var(--green-light); border-top-color: var(--green);
+    border-radius: 50%; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .check { width: 56px; height: 56px; margin: 0 auto; border-radius: 50%; background: var(--green); color: #fff; font-size: 30px; line-height: 56px; }
+  .check.wait { background: #d9a441; }
+  .hidden { display: none !important; }
+  .code { font-size: 12px; color: var(--muted); margin-top: 16px; word-break: break-all; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 4px; margin-bottom: 14px; }
+  .tabs button { border: 0; background: none; padding: 9px; border-radius: 999px; font-size: 15px; color: var(--muted); font-weight: 600; }
+  .tabs button.on { background: var(--green); color: #fff; }
+  .item { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
+  .item .t { font-weight: 700; color: var(--green-dark); font-size: 16px; }
+  .item .s { font-size: 14px; color: #333; margin-top: 2px; }
+  .item .m { font-size: 13px; color: var(--muted); }
+  .item .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--green-light); color: var(--green-dark); margin-left: 6px; vertical-align: 2px; }
+  .badge.wait { background: #fbf0d9; color: #8a5a12; }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .seat { font-size: 13px; font-weight: 600; color: var(--green-dark); }
+  .seat.full { color: var(--warn); }
+  .note { font-size: 12px; color: var(--muted); }
+  .note.warn { color: var(--warn); }
+  .empty { text-align: center; color: var(--muted); font-size: 14px; padding: 22px 8px; background: #fff;
+    border: 1px dashed var(--line); border-radius: var(--radius); }
+  .link { display: block; text-align: center; margin-top: 18px; color: var(--green-dark); font-size: 14px; background: none; border: 0; width: 100%; text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="kicker">理論上匹克球</div>
+  <h1 id="pageTitle">理論上匹克球</h1>
+</header>
+
+<section id="viewLoading" class="center">
+  <div class="spinner"></div>
+  <p style="margin-top:14px">載入中…</p>
+</section>
+<section id="viewError" class="center hidden">
+  <div class="big">無法開啟</div>
+  <p id="errorMsg">請關閉頁面後再試一次。</p>
+  <div class="code" id="errorCode"></div>
+  <div style="max-width:320px;margin:20px auto 0"><button class="ghost" onclick="location.reload()">重新載入</button></div>
+</section>
+<section id="viewDone" class="center hidden">
+  <div class="check" id="doneIcon">✓</div>
+  <div class="big" id="doneTitle">完成</div>
+  <p id="doneMsg"></p>
+  <div style="max-width:320px;margin:24px auto 0">
+    <button class="primary hidden" id="btnDoneNext" type="button"></button>
+    <button class="ghost" style="margin-top:10px" onclick="closeLiff()">關閉</button>
+  </div>
+</section>
+
+<!-- ============ 基本資料 ============ -->
+<main id="viewProfile" class="hidden">
+  <div id="profileBanner" class="banner"></div>
+  <div class="card">
+    <div class="field" data-field="姓名">
+      <label class="title" for="p_name">姓名<span class="req">*</span></label>
+      <input type="text" id="p_name" maxlength="30" autocomplete="name">
+      <div class="error-text">請填寫姓名</div>
+    </div>
+    <div class="field" data-field="電話">
+      <label class="title" for="p_phone">手機<span class="req">*</span></label>
+      <input type="tel" id="p_phone" inputmode="numeric" maxlength="12" placeholder="0912345678" autocomplete="tel">
+      <div class="error-text">請填寫正確的手機號碼，例如 0912345678</div>
+    </div>
+    <div class="field" id="p_levelField">
+      <label class="title" for="p_level">目前程度</label>
+      <select id="p_level"></select>
+      <div class="hint">不確定可以不選，教練會再協助判斷。</div>
+    </div>
+    <div class="field" id="p_sourceField">
+      <label class="title" for="p_source">從哪裡知道我們</label>
+      <select id="p_source"></select>
+    </div>
+  </div>
+  <button class="primary" id="btnProfile" type="button">儲存</button>
+</main>
+
+<!-- ============ 報名 ============ -->
+<main id="viewSignup" class="hidden">
+  <div class="tabs">
+    <button type="button" id="tabClass" class="on">課程</button>
+    <button type="button" id="tabGather">球敘</button>
+  </div>
+  <div id="signupBanner" class="banner hidden"></div>
+  <div id="signupList"></div>
+</main>
+
+<!-- ============ 我的報名 ============ -->
+<main id="viewMy" class="hidden">
+  <div id="myBanner" class="banner hidden"></div>
+  <div id="myList"></div>
+  <button class="link" type="button" onclick="openProfile('my')">修改基本資料</button>
+</main>
+
+<!-- ============ 請假 ============ -->
+<main id="viewLeave" class="hidden">
+  <div class="banner" id="leaveBanner"></div>
+  <div id="leaveList"></div>
+</main>
+
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+// ================================================================
+// 設定：建置手冊第 10 節
+// ================================================================
+const LIFF_ID = '請填入學員 LIFF ID';          // 例：2001234567-AbCdEfGh
+const GAS_URL = '請填入 GAS 網頁應用程式網址';  // https://script.google.com/macros/s/…/exec
+const SHOW_ERROR_CODE = true;                    // 測試期間顯示錯誤代碼；上線後改為 false
+
+// ================================================================
+// 共用
+// ================================================================
+const $ = (id) => document.getElementById(id);
+const VIEWS = ['viewLoading', 'viewError', 'viewDone', 'viewProfile', 'viewSignup', 'viewMy', 'viewLeave'];
+const app = { idToken: '', params: {}, init: null };
+
+function show(view, title) {
+  VIEWS.forEach((v) => $(v).classList.toggle('hidden', v !== view));
+  if (title) { $('pageTitle').textContent = title; document.title = title + '｜理論上匹克球'; }
+  window.scrollTo(0, 0);
+}
+function showError(message, code) {
+  $('errorMsg').textContent = message || '請關閉頁面後再試一次。';
+  $('errorCode').textContent = SHOW_ERROR_CODE && code ? '錯誤代碼：' + code : '';
+  show('viewError', '無法開啟');
+}
+function showDone(title, msg, opts) {
+  opts = opts || {};
+  $('doneTitle').textContent = title;
+  $('doneMsg').textContent = msg;
+  $('doneIcon').textContent = opts.icon || '✓';
+  $('doneIcon').className = 'check' + (opts.wait ? ' wait' : '');
+  const b = $('btnDoneNext');
+  b.classList.toggle('hidden', !opts.next);
+  if (opts.next) { b.textContent = opts.next.label; b.onclick = opts.next.fn; }
+  show('viewDone', title);
+}
+function newId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+function el(tag, attrs, children) {
+  const n = document.createElement(tag);
+  Object.entries(attrs || {}).forEach(([k, v]) => {
+    if (k === 'text') n.textContent = v;
+    else if (k === 'onclick') n.addEventListener('click', v);
+    else n.setAttribute(k, v);
+  });
+  (children || []).forEach((c) => c && n.appendChild(c));
+  return n;
+}
+function money(n) { return 'NT$' + Number(n || 0).toLocaleString('en-US'); }
+function normalizePhone(v) {
+  let s = String(v || '').replace(/\D/g, '');
+  if (s.length === 9 && s.charAt(0) === '9') s = '0' + s;
+  return s;
+}
+function banner(id, text, warn) {
+  const b = $(id);
+  b.textContent = text || '';
+  b.className = 'banner' + (warn ? ' warn' : '');
+  b.classList.toggle('hidden', !text);
+  if (text) window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function closeLiff() {
+  if (window.liff && liff.isInClient && liff.isInClient()) liff.closeWindow();
+  else window.close();
+}
+
+/** 呼叫 GAS：不設定 Content-Type（text/plain），避免 CORS 預檢 */
+async function callGas(payload, timeoutMs) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs || 20000);
+  try {
+    const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(Object.assign({ idToken: app.idToken }, payload)), signal: ctrl.signal });
+    const text = await res.text();
+    try { return JSON.parse(text); } catch (e) { throw new Error('NON_JSON'); }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function load(payload) {
+  show('viewLoading');
+  let r;
+  try { r = await callGas(payload); }
+  catch (e) { showError('連線逾時，請稍後再試。', e.name === 'AbortError' ? 'TIMEOUT' : e.message); return null; }
+  if (!r.ok) {
+    if (r.error === 'NEED_PROFILE') { openProfile(app.params.page); return null; }
+    showError(r.message || '載入失敗，請稍後再試。', r.error);
+    return null;
+  }
+  return r;
+}
+
+/** 寫入：同一個 submissionId 最多送兩次（GAS 不會重複寫入） */
+async function send(button, payload, busyText) {
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = busyText || '處理中…';
+  let last = '';
+  try {
+    for (let i = 0; i < 2; i++) {
+      try {
+        const r = await callGas(payload, 20000);
+        if (r.ok) return { ok: true, data: r };
+        if (r.error !== 'BUSY') return { ok: false, error: r.error, message: (r.message || '處理失敗') + (SHOW_ERROR_CODE ? '（' + r.error + '）' : '') };
+        last = 'BUSY';
+      } catch (e) {
+        last = e.name === 'AbortError' ? 'TIMEOUT' : e.message;
+      }
+    }
+    return { ok: false, uncertain: true, message: '連線不穩定，可能已經完成。請稍後到「我的報名」確認；沒有的話再操作一次即可（不會重複）。' + (SHOW_ERROR_CODE ? '（' + last + '）' : '') };
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+/** 按第一次變成「確定○○？」，3 秒內再按一次才執行 */
+function armed(btn, confirmText) {
+  if (btn.dataset.armed) return true;
+  const original = btn.textContent;
+  btn.dataset.armed = '1';
+  btn.textContent = confirmText;
+  btn.classList.add('armed');
+  setTimeout(() => { btn.dataset.armed = ''; btn.textContent = original; btn.classList.remove('armed'); }, 3000);
+  return false;
+}
+
+document.addEventListener('input', (e) => {
+  const box = e.target.closest && e.target.closest('[data-field]');
+  if (box) box.classList.remove('invalid');
+});
+
+// ================================================================
+// 基本資料
+// ================================================================
+let profileNext = null;
+const profileState = { submissionId: newId() };
+
+function openProfile(nextPage) {
+  profileNext = nextPage || null;
+  const d = app.init;
+  const s = d.student || {};
+  $('p_name').value = s.姓名 || d.lineName || '';
+  $('p_phone').value = s.電話 || '';
+  const lv = $('p_level');
+  lv.innerHTML = '';
+  lv.appendChild(el('option', { value: '', text: '不確定／不選' }));
+  (d.levels || []).forEach((l) => lv.appendChild(el('option', { value: l.id, text: l.name })));
+  lv.value = s.程度 || '';
+  // 程度、來源已有資料時不顯示（程度以教練判斷為準）
+  $('p_levelField').classList.toggle('hidden', !!s.程度);
+  const so = $('p_source');
+  so.innerHTML = '';
+  so.appendChild(el('option', { value: '', text: '請選擇' }));
+  (d.sources || []).forEach((x) => so.appendChild(el('option', { value: x, text: x })));
+  so.value = s.來源 || '';
+  $('p_sourceField').classList.toggle('hidden', !!s.來源);
+  banner('profileBanner', d.student ? '更新你的聯絡資料。' : '第一次使用，請先填寫基本資料，之後報名就不用再填。');
+  $('btnProfile').textContent = d.student ? '儲存' : (nextPage && nextPage !== 'profile' ? '儲存並繼續' : '儲存');
+  show('viewProfile', d.student ? '基本資料' : '歡迎！');
+}
+
+$('btnProfile').addEventListener('click', async () => {
+  const form = {
+    姓名: $('p_name').value.trim(),
+    電話: normalizePhone($('p_phone').value),
+    程度: $('p_level').value,
+    來源: $('p_source').value,
+  };
+  const bad = { 姓名: !form.姓名, 電話: !/^0\d{8,9}$/.test(form.電話) };
+  Object.keys(bad).forEach((k) => document.querySelector('[data-field="' + k + '"]').classList.toggle('invalid', bad[k]));
+  if (bad.姓名 || bad.電話) return;
+  const r = await send($('btnProfile'), { action: 'profileSave', submissionId: profileState.submissionId, form: form }, '儲存中…');
+  if (!r.ok) return banner('profileBanner', r.message, true);
+  profileState.submissionId = newId();
+  app.init.student = Object.assign({}, app.init.student || {}, form);
+  if (profileNext && profileNext !== 'profile') return route(profileNext);
+  showDone('已儲存', '基本資料已更新。');
+});
+
+// ================================================================
+// 報名
+// ================================================================
+const signupState = { tab: 'class', data: null };
+
+async function openSignup(tab) {
+  signupState.tab = tab === 'gathering' ? 'gathering' : 'class';
+  const d = await load({ action: 'options' });
+  if (!d) return;
+  signupState.data = d;
+  renderSignup();
+  show('viewSignup', signupState.tab === 'class' ? '報名課程' : '報名球敘');
+}
+
+function renderSignup() {
+  const isClass = signupState.tab === 'class';
+  $('tabClass').classList.toggle('on', isClass);
+  $('tabGather').classList.toggle('on', !isClass);
+  $('pageTitle').textContent = isClass ? '報名課程' : '報名球敘';
+  banner('signupBanner', '');
+  const list = $('signupList');
+  list.innerHTML = '';
+  const items = isClass ? signupState.data.classes : signupState.data.gatherings;
+  if (!items.length) {
+    list.appendChild(el('div', { class: 'empty', text: isClass ? '目前沒有開放報名的課程' : '近期沒有開放報名的球敘' }));
+    return;
+  }
+  items.forEach((it) => list.appendChild(signupCard(it)));
+}
+
+function seatText(it) {
+  if (it.left === null || it.left === undefined) return { text: '名額充足', full: false };
+  if (it.left <= 0) return { text: '已額滿，可排候補', full: true };
+  return { text: '剩 ' + it.left + ' 位', full: false };
+}
+
+function signupCard(it) {
+  const seat = seatText(it);
+  let btn;
+  if (it.mine) {
+    btn = el('span', { class: 'badge' + (it.mine === '候補' ? ' wait' : ''), text: it.mine === '候補' ? '候補中' : '已報名' });
+  } else {
+    btn = el('button', { class: 'act' + (seat.full ? ' alt' : ''), type: 'button', text: seat.full ? '排候補' : '報名' });
+    btn.addEventListener('click', () => doSignup(btn, it, seat.full));
+  }
+  const meta = it.kind === '課程'
+    ? [it.venue, it.lessons ? it.lessons + ' 堂' : '', it.fee ? money(it.fee) : ''].filter(Boolean).join('・')
+    : [it.venue, it.fee ? money(it.fee) + '／人' : '免費'].filter(Boolean).join('・');
+  return el('div', { class: 'item' }, [
+    el('div', { class: 't', text: it.title }, [it.tag ? el('span', { class: 'badge', text: it.tag }) : null]),
+    el('div', { class: 's', text: it.when }),
+    el('div', { class: 'm', text: meta }),
+    el('div', { class: 'foot' }, [el('span', { class: 'seat' + (seat.full ? ' full' : ''), text: seat.text }), btn]),
+  ]);
+}
+
+async function doSignup(btn, it, full) {
+  if (!armed(btn, full ? '確定排候補？' : '確定報名？')) return;
+  const r = await send(btn, {
+    action: 'signup', submissionId: newId(), type: it.kind, targetId: it.id,
+  }, '送出中…');
+  if (!r.ok) {
+    if (r.error === 'NEED_PROFILE') return openProfile('signup');
+    if (r.uncertain) return showDone('可能已送出', r.message, { icon: '!', wait: true, next: { label: '查看我的報名', fn: () => route('my') } });
+    return banner('signupBanner', r.message, true);
+  }
+  const d = r.data;
+  if (d.status === '已報名') {
+    showDone('報名成功', it.title + '\n' + it.when + (it.fee ? '\n費用 ' + money(it.fee) + '，繳費方式會再通知你。' : ''),
+      { next: { label: '查看我的報名', fn: () => route('my') } });
+  } else {
+    showDone('已加入候補', '目前候補第 ' + d.rank + ' 位。有人取消時會自動遞補，並在 LINE 通知你。',
+      { icon: '⏳', wait: true, next: { label: '查看我的報名', fn: () => route('my') } });
+  }
+}
+
+$('tabClass').addEventListener('click', () => { signupState.tab = 'class'; renderSignup(); });
+$('tabGather').addEventListener('click', () => { signupState.tab = 'gathering'; renderSignup(); });
+
+// ================================================================
+// 我的報名
+// ================================================================
+async function openMy() {
+  const d = await load({ action: 'myList' });
+  if (!d) return;
+  banner('myBanner', '');
+  const list = $('myList');
+  list.innerHTML = '';
+  if (!d.items.length) {
+    list.appendChild(el('div', { class: 'empty', text: '目前沒有進行中的報名' }));
+    list.appendChild(el('button', { class: 'ghost', type: 'button', style: 'margin-top:12px', text: '去報名', onclick: () => route('signup') }));
+  }
+  d.items.forEach((it) => list.appendChild(myCard(it)));
+  show('viewMy', '我的報名');
+}
+
+function myCard(it) {
+  const statusBadge = it.status === '候補'
+    ? el('span', { class: 'badge wait', text: '候補第 ' + it.rank + ' 位' })
+    : el('span', { class: 'badge', text: '已報名' });
+  let payText = '';
+  let payWarn = false;
+  if (it.status === '已報名') {
+    if (!it.due) payText = '免費';
+    else if (it.paid >= it.due) payText = '已繳清';
+    else { payText = '未繳 ' + money(it.due - it.paid); payWarn = true; }
+  }
+  let right;
+  if (it.canCancel) {
+    right = el('button', { class: 'act danger', type: 'button', text: it.status === '候補' ? '取消候補' : '取消報名' });
+    right.addEventListener('click', () => doCancel(right, it));
+  } else {
+    right = el('span', { class: 'note', text: it.cancelNote || '' });
+  }
+  return el('div', { class: 'item' }, [
+    el('div', { class: 't', text: it.title }, [statusBadge]),
+    el('div', { class: 's', text: it.when }),
+    el('div', { class: 'm', text: [it.kind, it.venue].filter(Boolean).join('・') }),
+    el('div', { class: 'foot' }, [el('span', { class: 'seat' + (payWarn ? ' full' : ''), text: payText }), right]),
+  ]);
+}
+
+async function doCancel(btn, it) {
+  if (!armed(btn, '確定取消？')) return;
+  const r = await send(btn, { action: 'cancel', signupId: it.signupId }, '取消中…');
+  if (!r.ok) {
+    if (r.uncertain) return banner('myBanner', r.message, true);
+    return banner('myBanner', r.message, true);
+  }
+  await openMy();
+  banner('myBanner', '已取消：' + it.title);
+}
+
+// ================================================================
+// 請假
+// ================================================================
+async function openLeave() {
+  const d = await load({ action: 'leaveList' });
+  if (!d) return;
+  banner('leaveBanner', '請在上課前 ' + d.noticeHours + ' 小時以前請假；之後才請假屬於逾時請假，依課程規定處理。');
+  const list = $('leaveList');
+  list.innerHTML = '';
+  if (!d.items.length) list.appendChild(el('div', { class: 'empty', text: '近期沒有可請假的課程' }));
+  d.items.forEach((it) => list.appendChild(leaveCard(it, d.noticeHours)));
+  show('viewLeave', '請假');
+}
+
+function leaveCard(it, hours) {
+  let right;
+  let note = null;
+  if (it.otherStatus) {
+    right = el('span', { class: 'note', text: '已登記：' + it.otherStatus });
+  } else if (it.leaveId) {
+    right = el('button', { class: 'act alt', type: 'button', text: '取消請假' });
+    right.addEventListener('click', () => doLeaveCancel(right, it));
+  } else {
+    right = el('button', { class: 'act danger', type: 'button', text: '請假' });
+    right.addEventListener('click', () => doLeave(right, it));
+    if (it.late) note = el('div', { class: 'note warn', text: '距離上課不到 ' + hours + ' 小時，屬於逾時請假' });
+  }
+  return el('div', { class: 'item' }, [
+    el('div', { class: 't', text: it.when }, [it.leaveId ? el('span', { class: 'badge warn', text: '已請假' }) : null]),
+    el('div', { class: 's', text: it.title }),
+    el('div', { class: 'm', text: [it.venue, it.lesson ? '第 ' + it.lesson + ' 堂' : ''].filter(Boolean).join('・') }),
+    note,
+    el('div', { class: 'foot' }, [el('span'), right]),
+  ]);
+}
+
+async function doLeave(btn, it) {
+  if (!armed(btn, '確定請假？')) return;
+  const r = await send(btn, { action: 'leave', submissionId: newId(), sessionId: it.sessionId }, '送出中…');
+  if (!r.ok) return banner('leaveBanner', r.message, true);
+  await openLeave();
+  banner('leaveBanner', '已請假：' + it.when + (r.data.late ? '（逾時請假）' : ''), r.data.late);
+}
+
+async function doLeaveCancel(btn, it) {
+  if (!armed(btn, '確定取消請假？')) return;
+  const r = await send(btn, { action: 'leaveCancel', leaveId: it.leaveId }, '處理中…');
+  if (!r.ok) return banner('leaveBanner', r.message, true);
+  await openLeave();
+  banner('leaveBanner', '已取消請假：' + it.when);
+}
+
+// ================================================================
+// 啟動
+// ================================================================
+function readParams() {
+  const out = {};
+  const p = new URLSearchParams(location.search);
+  p.forEach((v, k) => { if (k !== 'liff.state' && !(k in out)) out[k] = v; });
+  const state = p.get('liff.state');
+  if (state) {
+    const i = state.indexOf('?');
+    new URLSearchParams(i >= 0 ? state.slice(i + 1) : state).forEach((v, k) => { if (!(k in out)) out[k] = v; });
+  }
+  return out;
+}
+const START_PARAMS = readParams(); // liff.init() 之前先讀一次
+
+function route(page) {
+  app.params.page = page;
+  if (!app.init.student && page !== 'profile') return openProfile(page);
+  if (page === 'signup') return openSignup(app.params.tab);
+  if (page === 'my') return openMy();
+  if (page === 'leave') return openLeave();
+  return openProfile('profile');
+}
+
+async function main() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+  } catch (e) {
+    return showError('無法連接 LINE，請從官方帳號的選單開啟。', e.code || e.message);
+  }
+  if (!liff.isLoggedIn()) {
+    liff.login({ redirectUri: location.href });
+    return;
+  }
+  app.idToken = liff.getIDToken();
+  if (!app.idToken) return showError('無法取得 LINE 身分，請關閉後重新開啟。', 'NO_ID_TOKEN');
+  app.params = Object.assign({}, START_PARAMS, readParams());
+
+  const d = await load({ action: 'init' });
+  if (!d) return;
+  app.init = d;
+  route(app.params.page || 'signup');
+}
+main();
+</script>
+</body>
+</html>
