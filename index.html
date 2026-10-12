@@ -119,6 +119,10 @@
   .opt.on { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
   .sub { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid #edf1ef; }
   .sub:first-of-type { border-top: 0; }
+  /* v3：先顯示上次的資料，更新完成前不能按報名 */
+  #viewSignup.stale button.act { pointer-events: none; opacity: .45; }
+  .stale-note { display: none; text-align: center; font-size: 12px; color: var(--muted); margin: -4px 0 10px; }
+  #viewSignup.stale .stale-note { display: block; }
   /* v3：加好友邀請 */
   .friend { background: #fff; border: 2px solid #06c755; border-radius: var(--radius); padding: 14px; margin: 18px auto 0; max-width: 360px; text-align: left; }
   .friend .ft { font-weight: 700; color: #0b7a3b; font-size: 15px; margin-bottom: 4px; }
@@ -232,6 +236,7 @@
     <button type="button" id="tabClass" class="on">課程</button>
     <button type="button" id="tabGather">球敘</button>
   </div>
+  <div class="stale-note">顯示上次的資料，名額更新中…</div>
   <div class="crumbs" id="crumbs"></div>
   <div id="signupBanner" class="banner hidden"></div>
   <div id="signupList"></div>
@@ -251,7 +256,7 @@
   <div class="item">
     <div class="t" id="gTitle"></div>
     <div class="s" id="gWhen"></div>
-    <div class="m" id="gMeta"></div>
+    <div class="m" id="gMeta" style="white-space:pre-line"></div>
   </div>
   <div class="tabs hidden" id="gCourtTabs"></div>
   <div class="tabs" id="gSectionTabs">
@@ -284,7 +289,7 @@
 const LIFF_ID = '2011932114-Fh1txi0y';          // 例：2001234567-AbCdEfGh
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzEMw17w0AZ_-E_MrQq2kBamkGTpCVNa7VGEA8-R-IYCP4x-9Hf4L9w8WRdvRH2iz-a/exec';  // https://script.google.com/macros/s/…/exec
 const SHOW_ERROR_CODE = false;                    // 測試期間顯示錯誤代碼；上線後改為 false
-const OA_BASIC_ID = '@251nkmih';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
+const OA_BASIC_ID = '@xxxxxxx';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
 
 // ================================================================
 // 共用
@@ -584,18 +589,55 @@ $('btnProfile').addEventListener('click', async () => {
 const signupState = { tab: 'class', data: null, venue: '', time: '', only: '' };
 
 async function openSignup(tab) {
-  signupState.tab = tab === 'gathering' ? 'gathering' : 'class';
+  signupState.tab = tab === 'class' ? 'class' : 'gathering'; // v3：選單合併後預設球敘
   signupState.venue = '';
   signupState.time = '';
   signupState.only = '';
   await reloadSignup();
 }
 
+/** v3：場次資料。init 已一併帶回時直接用（只用一次），否則呼叫 GAS；成功後存一份在手機上 */
+async function getOptions() {
+  if (app.preOptions) {
+    const d = app.preOptions;
+    app.preOptions = null;
+    return d;
+  }
+  const d = await load({ action: 'options' });
+  if (d) saveOptionsCache(d);
+  return d;
+}
+
+// ---- v3：手機上記住上次的場次清單（每個 LINE 帳號分開；24 小時內有效） ----
+function cacheKey() {
+  try { return 'pb_opt3_' + ((liff.getDecodedIDToken() || {}).sub || ''); } catch (e) { return ''; }
+}
+function readOptionsCache() {
+  try {
+    const k = cacheKey();
+    const raw = k && localStorage.getItem(k);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    return c && c.at && Date.now() - c.at < 24 * 3600 * 1000 ? c.data : null;
+  } catch (e) { return null; }
+}
+function saveOptionsCache(d) {
+  try {
+    const k = cacheKey();
+    if (k && d) localStorage.setItem(k, JSON.stringify({ at: Date.now(), data: { venues: d.venues, classes: d.classes, gatherings: d.gatherings, registered: d.registered } }));
+  } catch (e) { /* 空間不足或無法使用時略過 */ }
+}
+function setStale(on) { $('viewSignup').classList.toggle('stale', !!on); }
+
 /** v3：深層連結 ?type=game|class&id=… → 直接顯示該場次（③ 球面）；找不到時回到一般首頁 */
 async function openTarget(type, id) {
-  signupState.tab = type === 'class' ? 'class' : 'gathering';
-  const d = await load({ action: 'options' });
+  const d = await getOptions();
   if (!d) return;
+  applyTarget(type, id, d);
+}
+
+function applyTarget(type, id, d) {
+  signupState.tab = type === 'class' ? 'class' : 'gathering';
   signupState.data = d;
   const list = signupState.tab === 'class' ? d.classes : d.gatherings;
   const it = list.find((x) => x.id === id);
@@ -615,7 +657,7 @@ async function openTarget(type, id) {
 
 /** 重新讀取名額，停留在原本的步驟 */
 async function reloadSignup() {
-  const d = await load({ action: 'options' });
+  const d = await getOptions();
   if (!d) return;
   signupState.data = d;
   renderSignup();
@@ -889,18 +931,36 @@ async function openGathering(id, keep) {
   if (!keep) { gState.court = ''; gState.sec = 'members'; }
   const d = await load({ action: 'gathering', id: id });
   if (!d) return;
+  if (d.none) {
+    // v3：選單「今日球敘」，但沒有已報名的球敘
+    $('gTitle').textContent = '今天沒有已報名的球敘';
+    $('gWhen').textContent = '';
+    $('gMeta').textContent = '報名後，當天從這裡就能看到成員、輪轉表與即時積分。';
+    $('gCourtTabs').classList.add('hidden');
+    $('gSectionTabs').classList.add('hidden');
+    $('gRefresh').classList.add('hidden');
+    $('gUpdated').textContent = '';
+    const body = $('gBody');
+    body.innerHTML = '';
+    body.appendChild(el('button', { class: 'primary', type: 'button', text: '報名球敘', onclick: () => openSignup('gathering') }));
+    show('viewGathering', '今日球敘');
+    return;
+  }
+  $('gSectionTabs').classList.remove('hidden');
+  $('gRefresh').classList.remove('hidden');
+  if (d.id) gState.id = d.id; // 重新整理時固定在同一場
   gState.data = d;
   if (!gState.court || !d.courts.some((c) => c.id === gState.court)) gState.court = d.myCourt || (d.courts[0] || {}).id || '';
   $('gTitle').textContent = d.title;
   $('gWhen').textContent = d.when;
-  $('gMeta').textContent = [d.venue, d.typeLabel, '每場 ' + d.pointsToWin + ' 分'].filter(Boolean).join('・');
+  $('gMeta').textContent = [d.venue, d.typeLabel, '每場 ' + d.pointsToWin + ' 分'].filter(Boolean).join('・') + (d.pick === 'next' ? '\n今天沒有球敘，這是你下一場已報名的球敘。' : '');
   const ct = $('gCourtTabs');
   ct.innerHTML = '';
   ct.classList.toggle('hidden', d.courts.length < 2);
   d.courts.forEach((c) => ct.appendChild(el('button', { type: 'button', class: c.id === gState.court ? 'on' : '', text: c.name + (c.id === d.myCourt ? '・我' : ''), onclick: () => { gState.court = c.id; renderGathering(); } })));
   $('gUpdated').textContent = '更新時間 ' + d.updated;
   renderGathering();
-  show('viewGathering', '球敘');
+  show('viewGathering', d.pick === 'today' ? '今日球敘' : '球敘');
 }
 
 function renderGathering() {
@@ -1105,9 +1165,19 @@ function route(page) {
   if (page === 'signup') return openSignup(app.params.tab);
   if (page === 'my') return openMy();
   if (page === 'leave') return openLeave();
-  if (page === 'gathering') return app.params.id ? openGathering(app.params.id) : openMy();
+  if (page === 'gathering') return openGathering(app.params.id || ''); // v3：沒帶 id＝今日球敘
   if (page === 'unformed') return openUnformed(app.params.signup);
   return openProfile('profile');
+}
+
+/** v3：只在需要時才顯示「載入中」（已先畫出上次資料時不閃畫面） */
+async function initCall(payload, quiet) {
+  if (!quiet) return load(payload);
+  let r;
+  try { r = await callGas(payload); }
+  catch (e) { showError('連線逾時，請稍後再試。', e.name === 'AbortError' ? 'TIMEOUT' : e.message); return null; }
+  if (!r.ok) { showError(r.message || '載入失敗，請稍後再試。', r.error); return null; }
+  return r;
 }
 
 async function main() {
@@ -1124,13 +1194,49 @@ async function main() {
   if (!app.idToken) return showError('無法取得 LINE 身分，請關閉後重新開啟。', 'NO_ID_TOKEN');
   app.params = Object.assign({}, START_PARAMS, readParams());
   app.src = String(app.params.src || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20);
-  try { app.profile = await liff.getProfile(); } catch (e) { app.profile = null; }
-  app.friend = await checkFriend();
 
-  const d = await load({ action: 'init', src: app.src, friend: app.friend === null ? undefined : app.friend });
+  const deep = !app.params.page && app.params.type && app.params.id;
+  const page = app.params.page || (deep ? '' : 'signup');
+  const wantsOptions = page === 'signup' || deep;
+
+  // v3：報名頁先用手機上次的資料畫出來（報名按鈕暫停），同時向 GAS 要最新資料
+  const cached = wantsOptions ? readOptionsCache() : null;
+  if (cached) {
+    if (deep) applyTarget(app.params.type, app.params.id, cached);
+    else {
+      signupState.tab = app.params.tab === 'class' ? 'class' : 'gathering';
+      signupState.data = cached;
+      renderSignup();
+      show('viewSignup', signupState.tab === 'class' ? '報名課程' : '報名球敘');
+    }
+    setStale(true);
+  }
+
+  // v3：LINE 名稱、好友檢查與 GAS 同時進行
+  const friendP = checkFriend();
+  const profileP = liff.getProfile().catch(() => null);
+  const d = await initCall({ action: 'init', src: app.src, withOptions: wantsOptions }, !!cached);
   if (!d) return;
   app.init = d;
-  const first = () => route(app.params.page || (app.params.type && app.params.id ? '' : 'signup'));
+  if (d.options) saveOptionsCache(d.options);
+
+  app.friend = await friendP;
+  app.profile = await profileP;
+  const known = d.student ? d.student.好友 : null;
+  if (app.friend !== null && known !== app.friend) callGas({ action: 'friendship', friend: app.friend }).catch(() => {});
+
+  const first = () => {
+    if (cached && d.options && !d.isNew) {
+      // 已顯示上次資料：換成最新資料，保留使用者目前停留的步驟
+      setStale(false);
+      if (deep && !signupState.only) return applyTarget(app.params.type, app.params.id, d.options);
+      signupState.data = d.options;
+      return renderSignup();
+    }
+    setStale(false);
+    app.preOptions = d.options || null;
+    route(page);
+  };
   if (d.isNew) return openWelcome(first); // v3：第一次開啟 → 只問程度
   first();
 }
