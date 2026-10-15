@@ -275,6 +275,12 @@
   <div id="ufBody"></div>
 </main>
 
+<!-- ============ v3：現場簽到（據點 QR） ============ -->
+<main id="viewCheckin" class="hidden">
+  <div id="ciBanner" class="banner hidden"></div>
+  <div id="ciBody"></div>
+</main>
+
 <!-- ============ 請假 ============ -->
 <main id="viewLeave" class="hidden">
   <div class="banner" id="leaveBanner"></div>
@@ -289,13 +295,13 @@
 const LIFF_ID = '2011932114-Fh1txi0y';          // 例：2001234567-AbCdEfGh
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzEMw17w0AZ_-E_MrQq2kBamkGTpCVNa7VGEA8-R-IYCP4x-9Hf4L9w8WRdvRH2iz-a/exec';  // https://script.google.com/macros/s/…/exec
 const SHOW_ERROR_CODE = false;                    // 測試期間顯示錯誤代碼；上線後改為 false
-const OA_BASIC_ID = '@251nkmih';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
+const OA_BASIC_ID = '@xxxxxxx';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
 
 // ================================================================
 // 共用
 // ================================================================
 const $ = (id) => document.getElementById(id);
-const VIEWS = ['viewLoading', 'viewError', 'viewDone', 'viewWelcome', 'viewProfile', 'viewSignup', 'viewMy', 'viewGathering', 'viewUnformed', 'viewLeave'];
+const VIEWS = ['viewLoading', 'viewError', 'viewDone', 'viewWelcome', 'viewProfile', 'viewSignup', 'viewMy', 'viewGathering', 'viewUnformed', 'viewLeave', 'viewCheckin'];
 const app = { idToken: '', params: {}, init: null, src: '', friend: null };
 
 function show(view, title) {
@@ -953,7 +959,7 @@ async function openGathering(id, keep) {
   if (!gState.court || !d.courts.some((c) => c.id === gState.court)) gState.court = d.myCourt || (d.courts[0] || {}).id || '';
   $('gTitle').textContent = d.title;
   $('gWhen').textContent = d.when;
-  $('gMeta').textContent = [d.venue, d.typeLabel, '每場 ' + d.pointsToWin + ' 分'].filter(Boolean).join('・') + (d.pick === 'next' ? '\n今天沒有球敘，這是你下一場已報名的球敘。' : '');
+  $('gMeta').textContent = [d.venue, d.typeLabel].filter(Boolean).join('・') + (d.pick === 'next' ? '\n今天沒有球敘，這是你下一場已報名的球敘。' : '');
   const ct = $('gCourtTabs');
   ct.innerHTML = '';
   ct.classList.toggle('hidden', d.courts.length < 2);
@@ -985,12 +991,11 @@ function renderGathering() {
     c.rounds.forEach((r) => {
       const box = el('div', { class: 'round' }, [el('h3', { text: '第 ' + r.round + ' 輪' })]);
       r.games.forEach((g) => {
-        const aWin = g.done && g.sa > g.sb;
-        const bWin = g.done && g.sb > g.sa;
+        // 2026/10/15：只顯示比分，不標示輸贏
         box.appendChild(el('div', { class: 'game' + (g.mine ? ' mine' : '') }, [
-          el('div', { class: 'team' + (aWin ? ' win' : '') }, [el('div', { text: g.a[0] }), el('div', { text: g.a[1] })]),
+          el('div', { class: 'team' }, [el('div', { text: g.a[0] }), el('div', { text: g.a[1] })]),
           g.done ? el('div', { class: 'score', text: g.sa + ' : ' + g.sb }) : el('div', { class: 'score wait', text: 'vs' }),
-          el('div', { class: 'team b' + (bWin ? ' win' : '') }, [el('div', { text: g.b[0] }), el('div', { text: g.b[1] })]),
+          el('div', { class: 'team b' }, [el('div', { text: g.b[0] }), el('div', { text: g.b[1] })]),
         ]));
       });
       body.appendChild(box);
@@ -1090,6 +1095,102 @@ async function chooseUnformed(btn, choice, cls) {
 }
 
 // ================================================================
+// v3：現場簽到（據點 QR：?page=checkin&venue=據點ID&src=qr）
+// ================================================================
+/** 取得定位：成功 { lat, lng, acc }；失敗 { error } */
+function getLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve({ error: 'UNSUPPORTED' });
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
+      (e) => resolve({ error: e.code === 1 ? 'DENIED' : 'UNAVAILABLE' }),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  });
+}
+
+async function openCheckin(venueId, gatherId) {
+  if (!venueId) return showError('簽到 QR Code 缺少據點資訊，請洽場主。', 'NO_VENUE');
+  show('viewLoading', '現場簽到');
+  const loc = await (app.geoP || getLocation());
+  app.geoP = null;
+  if (loc.error) return checkinProblem(loc.error === 'DENIED'
+    ? '簽到需要確認你在現場，請允許 LINE 使用定位。\n（iPhone：設定 → 隱私權與安全性 → 定位服務 → LINE → 使用 App 期間）'
+    : '目前無法取得定位，請確認手機已開啟定位後再試一次。', venueId);
+  let r;
+  try { r = await callGas({ action: 'checkin', venue: venueId, lat: loc.lat, lng: loc.lng, acc: loc.acc, gatherId: gatherId || '', src: app.src || 'qr' }); }
+  catch (e) { return checkinProblem('連線不穩定，請再試一次。', venueId); }
+  if (!r.ok) {
+    if (r.error === 'NO_SESSION' || r.error === 'NOT_FOUND') { banner('ciBanner', r.message, true); $('ciBody').innerHTML = ''; return show('viewCheckin', '現場簽到'); }
+    return checkinProblem(r.message || '簽到失敗，請再試一次。', venueId);
+  }
+  renderCheckin(r, venueId);
+}
+
+function checkinProblem(msg, venueId) {
+  banner('ciBanner', msg, true);
+  const body = $('ciBody');
+  body.innerHTML = '';
+  body.appendChild(el('button', { class: 'primary', type: 'button', text: '重新簽到', onclick: () => openCheckin(venueId) }));
+  body.appendChild(el('div', { class: 'note', style: 'text-align:center;margin-top:12px', text: '仍然不行的話，請找場主或教練幫你點名。' }));
+  show('viewCheckin', '現場簽到');
+}
+
+const CI_TEXT = {
+  checked: ['簽到成功', ''],
+  already: ['已經簽到過了', ''],
+  walkin: ['已通知場主', 'wait'],
+  waitlist: ['候補中', 'wait'],
+  leave: ['已記錄到場', 'wait'],
+};
+
+function renderCheckin(r, venueId) {
+  const body = $('ciBody');
+  body.innerHTML = '';
+  banner('ciBanner', '');
+  if (r.choices && r.choices.length) {
+    banner('ciBanner', r.venue + ' 現在有 ' + r.choices.length + ' 場球敘，你要參加哪一場？送出後由場主確認。');
+    r.choices.forEach((c) => {
+      const b = el('button', { class: 'act', type: 'button', text: '選這場' });
+      b.addEventListener('click', () => openCheckin(venueId, c.id));
+      body.appendChild(el('div', { class: 'item' }, [
+        el('div', { class: 't', text: c.title }, [el('span', { class: 'badge', text: c.typeLabel })]),
+        el('div', { class: 's', text: c.when }),
+        el('div', { class: 'foot' }, [el('span', { class: 'seat', text: c.fee ? money(c.fee) + '／人' : '免費' }), b]),
+      ]));
+    });
+    show('viewCheckin', '現場簽到');
+    return;
+  }
+  r.results.forEach((x) => {
+    const [label, tone] = CI_TEXT[x.status] || ['已處理', ''];
+    let note = '';
+    if (x.status === 'checked' || x.status === 'already') note = x.kind === '球敘' ? (x.court ? '球面：' + x.court + '。' : '') + '輪轉表與比分可在「今日球敘」查看。' : '教練會在課後確認出席並扣堂。';
+    if (x.status === 'walkin') note = '你沒有報名這場，已送出現場報名，請等場主確認並收費。' + (x.note ? '\n' + x.note : '');
+    if (x.status === 'waitlist') note = '你在候補名單上，請找場主確認是否有位置。';
+    if (x.status === 'leave') note = '這一堂你已請假，系統已記錄你到場，請告知教練。';
+    const actions = x.kind === '球敘' && (x.status === 'checked' || x.status === 'already')
+      ? el('button', { class: 'act alt', type: 'button', text: '今日球敘', onclick: () => openGathering(x.gatherId) }) : null;
+    body.appendChild(el('div', { class: 'item' }, [
+      el('div', { class: 't', text: x.title }, [el('span', { class: 'badge' + (tone ? ' wait' : ''), text: label })]),
+      el('div', { class: 's', text: x.kind + '・' + x.when }),
+      note ? el('div', { class: 'note', style: 'margin-top:6px;white-space:pre-line', text: note }) : null,
+      actions ? el('div', { class: 'foot' }, [el('span'), actions]) : null,
+    ]));
+  });
+  const ok = r.results.every((x) => x.status === 'checked' || x.status === 'already');
+  banner('ciBanner', (ok ? '✓ ' : '') + r.venue + (ok ? '　簽到完成' : ''));
+  if (app.friend === false) {
+    body.appendChild(el('div', { class: 'friend', style: 'margin-top:8px' }, [
+      el('div', { class: 'ft', text: '加入官方帳號，才收得到通知' }),
+      el('p', { text: '報名結果、付款期限與上課提醒都用 LINE 通知。' }),
+      el('button', { type: 'button', text: '加入官方帳號（免費）', onclick: addFriend }),
+    ]));
+  }
+  show('viewCheckin', '現場簽到');
+}
+
+// ================================================================
 // 請假
 // ================================================================
 async function openLeave() {
@@ -1167,6 +1268,7 @@ function route(page) {
   if (page === 'leave') return openLeave();
   if (page === 'gathering') return openGathering(app.params.id || ''); // v3：沒帶 id＝今日球敘
   if (page === 'unformed') return openUnformed(app.params.signup);
+  if (page === 'checkin') return openCheckin(app.params.venue);
   return openProfile('profile');
 }
 
@@ -1212,6 +1314,8 @@ async function main() {
     setStale(true);
   }
 
+  // v3：現場簽到 → 定位和 GAS 同時進行
+  if (page === 'checkin') app.geoP = getLocation();
   // v3：LINE 名稱、好友檢查與 GAS 同時進行
   const friendP = checkFriend();
   const profileP = liff.getProfile().catch(() => null);
