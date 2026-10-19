@@ -130,6 +130,7 @@
   .stale-note { display: none; text-align: center; font-size: 12px; color: var(--muted); margin: -4px 0 10px; }
   .stale .stale-note { display: block; }
   .stale-note.err { color: var(--warn); }
+  h2.sec { font-size: 15px; color: var(--green-dark); margin: 16px 2px 8px; }
   /* v3：加好友邀請 */
   .friend { background: #fff; border: 2px solid #06c755; border-radius: var(--radius); padding: 14px; margin: 18px auto 0; max-width: 360px; text-align: left; }
   .friend .ft { font-weight: 700; color: #0b7a3b; font-size: 15px; margin-bottom: 4px; }
@@ -305,7 +306,7 @@
 const LIFF_ID = '2011932114-Fh1txi0y';          // 例：2001234567-AbCdEfGh
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzEMw17w0AZ_-E_MrQq2kBamkGTpCVNa7VGEA8-R-IYCP4x-9Hf4L9w8WRdvRH2iz-a/exec';  // https://script.google.com/macros/s/…/exec
 const SHOW_ERROR_CODE = false;                    // 測試期間顯示錯誤代碼；上線後改為 false
-const OA_BASIC_ID = '@251nkmih';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
+const OA_BASIC_ID = '@xxxxxxx';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
 
 // ================================================================
 // 共用
@@ -1336,9 +1337,49 @@ function renderLeave(d, stale) {
   banner('leaveBanner', '請在上課前 ' + d.noticeHours + ' 小時以前請假；之後才請假屬於逾時請假，依課程規定處理。');
   const list = $('leaveList');
   list.innerHTML = '';
+  const gs = d.gatherings || [];
+  if (gs.length) list.appendChild(el('h2', { class: 'sec', text: '課程' }));
   if (!d.items.length) list.appendChild(el('div', { class: 'empty', text: '近期沒有可請假的課程' }));
   d.items.forEach((it) => list.appendChild(leaveCard(it, d.noticeHours)));
+  // v3.3：球敘不用請假，取消報名即可（名額會釋出給候補）
+  if (gs.length) {
+    list.appendChild(el('h2', { class: 'sec', text: '球敘' }));
+    list.appendChild(el('div', { class: 'note', style: 'margin:-2px 0 8px', text: '球敘不用請假，不能參加請直接取消報名，名額會釋出給候補。' }));
+    gs.forEach((it) => list.appendChild(leaveGatherCard(it)));
+  }
   show('viewLeave', '請假');
+}
+
+function leaveGatherCard(it) {
+  let right;
+  if (it.canCancel) {
+    right = el('button', { class: 'act danger', type: 'button', text: it.status === '候補' ? '取消候補' : '取消報名' });
+    right.addEventListener('click', () => doLeaveGatherCancel(right, it));
+  } else {
+    right = el('span', { class: 'note', text: it.cancelNote || '請點選單「聯絡我們」' });
+  }
+  return el('div', { class: 'item' }, [
+    el('div', { class: 't', text: it.when }, [it.status === '候補' ? el('span', { class: 'badge wait', text: '候補中' }) : null]),
+    el('div', { class: 's', text: it.title }),
+    el('div', { class: 'm', text: [it.venue, it.courtName].filter(Boolean).join('・') }),
+    el('div', { class: 'foot' }, [el('span'), right]),
+  ]);
+}
+
+/** 在請假頁取消球敘：送出後直接從清單移除，並用回傳的資料更新「我的報名」（不再讀） */
+async function doLeaveGatherCancel(btn, it) {
+  if (!armed(btn, '確定取消？')) return;
+  const r = await send(btn, { action: 'cancel', signupId: it.signupId }, '取消中…');
+  if (!r.ok) return banner('leaveBanner', r.message, true);
+  app.optAt = 0;
+  if (r.data.my) savePage('my', r.data.my);
+  const cur = (app.mem.leave || {}).data;
+  if (cur) {
+    const next = Object.assign({}, cur, { gatherings: (cur.gatherings || []).filter((x) => x.signupId !== it.signupId) });
+    savePage('leave', next);
+    renderLeave(next, false);
+  } else await openLeave(true);
+  banner('leaveBanner', '已取消：' + it.title + '　' + it.when);
 }
 
 function leaveCard(it, hours) {
