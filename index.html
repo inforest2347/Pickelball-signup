@@ -6,6 +6,11 @@
 <title>理論上匹克球</title>
 <!-- 學員官方帳號 LIFF　v3（2026/10/11）：v2 ＋ 免加好友報名、深層連結（type／id／src）、加好友邀請、電話只在課程時要求 -->
 <!-- v3.2（2026/10/19）：籌備中課程不顯示日期、課程候補「暫不需付款」、未成班三選項 順延／轉班／退款（須搭配 GAS v3.2） -->
+<!-- v3.3（2026/10/19）：開頁只要 1 個請求（init 一併回傳頁面資料）、各頁先顯示手機上次的資料、操作後不再重讀（須搭配 GAS v3.3） -->
+<link rel="preconnect" href="https://script.google.com" crossorigin>
+<link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+<link rel="preconnect" href="https://api.line.me" crossorigin>
+<link rel="dns-prefetch" href="https://profile.line-scdn.net">
 <style>
   :root {
     --green: #1f5f4a; --green-dark: #16463a; --green-light: #e6f0eb;
@@ -121,9 +126,10 @@
   .sub { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid #edf1ef; }
   .sub:first-of-type { border-top: 0; }
   /* v3：先顯示上次的資料，更新完成前不能按報名 */
-  #viewSignup.stale button.act { pointer-events: none; opacity: .45; }
+  .stale button.act, .stale button.ghost#gRefresh { pointer-events: none; opacity: .45; }
   .stale-note { display: none; text-align: center; font-size: 12px; color: var(--muted); margin: -4px 0 10px; }
-  #viewSignup.stale .stale-note { display: block; }
+  .stale .stale-note { display: block; }
+  .stale-note.err { color: var(--warn); }
   /* v3：加好友邀請 */
   .friend { background: #fff; border: 2px solid #06c755; border-radius: var(--radius); padding: 14px; margin: 18px auto 0; max-width: 360px; text-align: left; }
   .friend .ft { font-weight: 700; color: #0b7a3b; font-size: 15px; margin-bottom: 4px; }
@@ -246,6 +252,7 @@
 <!-- ============ 我的報名 ============ -->
 <main id="viewMy" class="hidden">
   <div class="friend-strip hidden" id="friendStrip"><span>還沒加入官方帳號，付款期限與遞補通知會收不到</span><button type="button" class="btnAddFriend">加入</button></div>
+  <div class="stale-note">顯示上次的資料，更新中…</div>
   <div id="myBanner" class="banner hidden"></div>
   <div id="myPayInfo" class="banner hidden"></div>
   <div id="myList"></div>
@@ -254,6 +261,7 @@
 
 <!-- ============ 球敘頁：成員、輪轉表、積分榜 ============ -->
 <main id="viewGathering" class="hidden">
+  <div class="stale-note">顯示上次的資料，更新中…</div>
   <div class="item">
     <div class="t" id="gTitle"></div>
     <div class="s" id="gWhen"></div>
@@ -284,6 +292,7 @@
 
 <!-- ============ 請假 ============ -->
 <main id="viewLeave" class="hidden">
+  <div class="stale-note">顯示上次的資料，更新中…</div>
   <div class="banner" id="leaveBanner"></div>
   <div id="leaveList"></div>
 </main>
@@ -296,19 +305,21 @@
 const LIFF_ID = '2011932114-Fh1txi0y';          // 例：2001234567-AbCdEfGh
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzEMw17w0AZ_-E_MrQq2kBamkGTpCVNa7VGEA8-R-IYCP4x-9Hf4L9w8WRdvRH2iz-a/exec';  // https://script.google.com/macros/s/…/exec
 const SHOW_ERROR_CODE = false;                    // 測試期間顯示錯誤代碼；上線後改為 false
-const OA_BASIC_ID = '@251nkmih';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
+const OA_BASIC_ID = '@xxxxxxx';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
 
 // ================================================================
 // 共用
 // ================================================================
 const $ = (id) => document.getElementById(id);
 const VIEWS = ['viewLoading', 'viewError', 'viewDone', 'viewWelcome', 'viewProfile', 'viewSignup', 'viewMy', 'viewGathering', 'viewUnformed', 'viewLeave', 'viewCheckin'];
-const app = { idToken: '', params: {}, init: null, src: '', friend: null };
+const app = { idToken: '', params: {}, init: null, src: '', friend: null, view: '', mem: {}, prePage: null, optAt: 0 };
 
 function show(view, title) {
+  const changed = app.view !== view;
+  app.view = view;
   VIEWS.forEach((v) => $(v).classList.toggle('hidden', v !== view));
   if (title) { $('pageTitle').textContent = title; document.title = title + '｜理論上匹克球'; }
-  window.scrollTo(0, 0);
+  if (changed) window.scrollTo(0, 0); // v3.3：同一頁更新資料時不跳回頂端
 }
 function showError(message, code) {
   $('errorMsg').textContent = message || '請關閉頁面後再試一次。';
@@ -386,6 +397,78 @@ async function load(payload) {
     return null;
   }
   return r;
+}
+
+// ================================================================
+// v3.3：頁面資料快取 — 先顯示手機上次的資料，再背景更新（每頁最多 1 個請求）
+// ================================================================
+const PAGE_FRESH_MS = 30000; // 30 秒內再開同一頁，直接用記憶體中的資料，不送請求
+function pageStoreKey(k) {
+  try { return 'pb_pg33_' + k + '_' + ((liff.getDecodedIDToken() || {}).sub || ''); } catch (e) { return ''; }
+}
+function readPage(k) {
+  if (app.mem[k]) return app.mem[k];
+  try {
+    const sk = pageStoreKey(k);
+    const raw = sk && localStorage.getItem(sk);
+    const c = raw ? JSON.parse(raw) : null;
+    return c && c.at && Date.now() - c.at < 24 * 3600 * 1000 ? { at: 0, data: c.data } : null; // at: 0 → 一定背景更新
+  } catch (e) { return null; }
+}
+function savePage(k, d) {
+  if (!d || d.ok === false) return;
+  app.mem[k] = { at: Date.now(), data: d };
+  try { const sk = pageStoreKey(k); if (sk) localStorage.setItem(sk, JSON.stringify({ at: Date.now(), data: d })); } catch (e) { /* 略過 */ }
+}
+function setViewStale(viewId, on, failed) {
+  const v = $(viewId);
+  v.classList.toggle('stale', !!on);
+  const n = v.querySelector('.stale-note');
+  if (n) { n.classList.toggle('err', !!failed); n.textContent = failed ? '目前無法連線，顯示上次的資料' : '顯示上次的資料，更新中…'; }
+}
+/** init 先帶回的頁面資料（只用一次） */
+function takePrePage(k) {
+  if (!app.prePage || app.prePage.key !== k) return null;
+  const d = app.prePage.data;
+  app.prePage = null;
+  return d;
+}
+/**
+ * k：快取鍵；payload：GAS 請求；render(d, stale)；viewId：該頁的 view
+ * opts.force：略過 30 秒記憶；opts.maxAge：記憶有效毫秒
+ */
+async function pageLoad(k, payload, render, viewId, opts) {
+  opts = opts || {};
+  const pre = takePrePage(k);
+  if (pre) {
+    if (pre.ok === false) return pageFail(pre);
+    savePage(k, pre);
+    return render(pre, false);
+  }
+  const c = readPage(k);
+  const maxAge = opts.maxAge === undefined ? PAGE_FRESH_MS : opts.maxAge;
+  if (c && !opts.force && Date.now() - c.at < maxAge) return render(c.data, false);
+  if (!c) {
+    const d = await load(payload);
+    if (!d) return;
+    savePage(k, d);
+    return render(d, false);
+  }
+  render(c.data, true); // 先畫上次的資料
+  let r = null;
+  try { r = await callGas(payload); } catch (e) { r = null; }
+  if (app.view !== viewId) { if (r && r.ok) savePage(k, r); return; } // 使用者已離開這一頁
+  if (!r || !r.ok) {
+    if (r && r.error === 'NEED_PROFILE') return openProfile(app.params.page);
+    if (r && r.error !== 'BUSY') return pageFail(r);
+    return setViewStale(viewId, true, true);
+  }
+  savePage(k, r);
+  render(r, false);
+}
+function pageFail(r) {
+  if (r.error === 'NEED_PROFILE') return openProfile(app.params.page);
+  showError(r.message || '載入失敗，請稍後再試。', r.error);
 }
 
 /** 寫入：同一個 submissionId 最多送兩次（GAS 不會重複寫入） */
@@ -603,15 +686,17 @@ async function openSignup(tab) {
   await reloadSignup();
 }
 
-/** v3：場次資料。init 已一併帶回時直接用（只用一次），否則呼叫 GAS；成功後存一份在手機上 */
+/** v3：場次資料。init 已一併帶回時直接用（只用一次）；v3.3：30 秒內用記憶體中的資料；否則呼叫 GAS */
 async function getOptions() {
   if (app.preOptions) {
     const d = app.preOptions;
     app.preOptions = null;
+    app.optAt = Date.now();
     return d;
   }
+  if (signupState.data && Date.now() - app.optAt < PAGE_FRESH_MS) return signupState.data;
   const d = await load({ action: 'options' });
-  if (d) saveOptionsCache(d);
+  if (d) { saveOptionsCache(d); app.optAt = Date.now(); }
   return d;
 }
 
@@ -662,13 +747,32 @@ function applyTarget(type, id, d) {
   if (!it) banner('signupBanner', '這個' + (signupState.tab === 'class' ? '課程' : '場次') + '已結束、額滿關閉或暫停報名，看看其他' + (signupState.tab === 'class' ? '課程' : '場次') + '吧！', true);
 }
 
-/** 重新讀取名額，停留在原本的步驟 */
+/** 重新讀取名額，停留在原本的步驟；v3.3：手上有資料就先畫出來，再背景更新 */
 async function reloadSignup() {
-  const d = await getOptions();
-  if (!d) return;
-  signupState.data = d;
+  const title = () => (signupState.tab === 'class' ? '報名課程' : '報名球敘');
+  const fresh = app.preOptions || (signupState.data && Date.now() - app.optAt < PAGE_FRESH_MS);
+  const have = signupState.data || readOptionsCache();
+  if (fresh || !have) {
+    const d = await getOptions();
+    if (!d) return;
+    signupState.data = d;
+    setStale(false);
+    renderSignup();
+    return show('viewSignup', title());
+  }
+  signupState.data = have;
+  setStale(true);
   renderSignup();
-  show('viewSignup', signupState.tab === 'class' ? '報名課程' : '報名球敘');
+  show('viewSignup', title());
+  let r = null;
+  try { r = await callGas({ action: 'options' }); } catch (e) { r = null; }
+  if (!r || !r.ok) { if (app.view === 'viewSignup') $('viewSignup').querySelector('.stale-note').textContent = '目前無法連線，顯示上次的資料'; return; }
+  saveOptionsCache(r);
+  app.optAt = Date.now();
+  signupState.data = r;
+  if (app.view !== 'viewSignup') return;
+  setStale(false);
+  renderSignup();
 }
 function reopenSignup() { return reloadSignup(); }
 
@@ -831,6 +935,11 @@ async function doSignup(btn, it, court, full) {
     return banner('signupBanner', r.message, true);
   }
   const d = r.data;
+  // v3.3：報名頁直接標成已報名／候補，我的報名用回傳的最新資料（回到這兩頁都不必再讀）
+  it.mine = d.status;
+  if (court) it.mineCourt = court.id;
+  if (signupState.data) saveOptionsCache(signupState.data);
+  if (d.my) savePage('my', d.my);
   const myBtn = { label: '查看我的報名', fn: () => route('my') };
   if (d.status !== '已報名') {
     return showDone('已加入候補', '目前候補第 ' + d.rank + ' 位。' + (it.kind === '球敘' ? '有人取消時會自動遞補，並在 LINE 通知你（遞補後需在期限內付款）。' : '候補中，暫不需付款，遞補時會通知您。'),
@@ -857,9 +966,11 @@ $('tabGather').addEventListener('click', () => { signupState.tab = 'gathering'; 
 // ================================================================
 // 我的報名
 // ================================================================
-async function openMy() {
-  const d = await load({ action: 'myList' });
-  if (!d) return;
+async function openMy(force) {
+  return pageLoad('my', { action: 'myList' }, renderMy, 'viewMy', { force: force });
+}
+
+function renderMy(d, stale) {
   banner('myBanner', '');
   const list = $('myList');
   list.innerHTML = '';
@@ -873,6 +984,7 @@ async function openMy() {
   }
   d.items.forEach((it) => list.appendChild(myCard(it)));
   $('friendStrip').classList.toggle('hidden', app.friend !== false);
+  setViewStale('viewMy', stale);
   show('viewMy', '我的報名');
 }
 
@@ -926,7 +1038,8 @@ async function doCancel(btn, it) {
   if (!armed(btn, '確定取消？')) return;
   const r = await send(btn, { action: 'cancel', signupId: it.signupId }, '取消中…');
   if (!r.ok) return banner('myBanner', r.message, true);
-  await openMy();
+  app.optAt = 0; // 報名頁的名額下次背景更新
+  if (r.data.my) { savePage('my', r.data.my); renderMy(r.data.my, false); } else await openMy(true);
   banner('myBanner', '已取消：' + it.title);
 }
 
@@ -938,8 +1051,13 @@ const gState = { id: '', data: null, court: '', sec: 'members' };
 async function openGathering(id, keep) {
   gState.id = id;
   if (!keep) { gState.court = ''; gState.sec = 'members'; }
-  const d = await load({ action: 'gathering', id: id });
-  if (!d) return;
+  // v3.3：比分會即時變動 → 一律背景更新（maxAge 0），但先顯示上次的資料
+  return pageLoad('g:' + (id || 'today'), { action: 'gathering', id: id }, renderGatheringPage, 'viewGathering', { maxAge: 0, force: !!keep });
+}
+
+function renderGatheringPage(d, stale) {
+  setViewStale('viewGathering', stale);
+  if (!stale) $('gRefresh').textContent = '重新整理';
   if (d.none) {
     // v3：選單「今日球敘」，但沒有已報名的球敘
     $('gTitle').textContent = '今天沒有已報名的球敘';
@@ -1024,6 +1142,8 @@ function renderGathering() {
 
 Array.from($('gSectionTabs').children).forEach((b) => b.addEventListener('click', () => { gState.sec = b.dataset.sec; renderGathering(); }));
 $('gRefresh').addEventListener('click', () => openGathering(gState.id, true));
+// v3.3：重新整理時按鈕顯示「更新中…」，不整頁轉圈（畫面更新後恢復）
+$('gRefresh').addEventListener('click', () => { $('gRefresh').textContent = '更新中…'; });
 
 // ================================================================
 // 未成班：順延／轉班／退款（v3.2）
@@ -1033,7 +1153,8 @@ const ufState = { signupId: '' };
 async function openUnformed(signupId) {
   ufState.signupId = signupId || app.params.signup || '';
   if (!ufState.signupId) return route('my');
-  const d = await load({ action: 'unformedInfo', signupId: ufState.signupId });
+  const pre = takePrePage('unformed');
+  const d = pre && pre.ok !== false ? pre : await load({ action: 'unformedInfo', signupId: ufState.signupId });
   if (!d) return;
   const body = $('ufBody');
   body.innerHTML = '';
@@ -1091,6 +1212,7 @@ async function chooseUnformed(btn, choice, cls) {
   if (!armed(btn, confirmText)) return;
   const r = await send(btn, { action: 'unformedChoose', submissionId: newId(), signupId: ufState.signupId, choice: choice, classId: cls ? cls.id : '' }, '處理中…');
   if (!r.ok) return banner('ufBanner', r.message, true);
+  if (r.data.my) savePage('my', r.data.my);
   const myBtn = { label: '查看我的報名', fn: () => route('my') };
   if (choice === '順延') return showDone('已選擇順延', '同據點下一期開班時會通知你，名額與款項都會保留。', { next: myBtn });
   if (choice === '退款') return showDone('已申請退款', '退款 ' + money(r.data.refund) + '，客服會與你聯絡完成退款。', { next: myBtn });
@@ -1114,6 +1236,15 @@ function getLocation() {
 
 async function openCheckin(venueId, gatherId) {
   if (!venueId) return showError('簽到 QR Code 缺少據點資訊，請洽場主。', 'NO_VENUE');
+  const pre = !gatherId ? takePrePage('checkin') : null; // v3.3：init 已一併簽到
+  if (pre) {
+    app.geoP = null;
+    if (pre.ok === false) {
+      if (pre.error === 'NO_SESSION' || pre.error === 'NOT_FOUND') { banner('ciBanner', pre.message, true); $('ciBody').innerHTML = ''; return show('viewCheckin', '現場簽到'); }
+      return checkinProblem(pre.message || '簽到失敗，請再試一次。', venueId);
+    }
+    return renderCheckin(pre, venueId);
+  }
   show('viewLoading', '現場簽到');
   const loc = await (app.geoP || getLocation());
   app.geoP = null;
@@ -1196,9 +1327,12 @@ function renderCheckin(r, venueId) {
 // ================================================================
 // 請假
 // ================================================================
-async function openLeave() {
-  const d = await load({ action: 'leaveList' });
-  if (!d) return;
+async function openLeave(force) {
+  return pageLoad('leave', { action: 'leaveList' }, renderLeave, 'viewLeave', { force: force });
+}
+
+function renderLeave(d, stale) {
+  setViewStale('viewLeave', stale);
   banner('leaveBanner', '請在上課前 ' + d.noticeHours + ' 小時以前請假；之後才請假屬於逾時請假，依課程規定處理。');
   const list = $('leaveList');
   list.innerHTML = '';
@@ -1233,7 +1367,7 @@ async function doLeave(btn, it) {
   if (!armed(btn, '確定請假？')) return;
   const r = await send(btn, { action: 'leave', submissionId: newId(), sessionId: it.sessionId }, '送出中…');
   if (!r.ok) return banner('leaveBanner', r.message, true);
-  await openLeave();
+  if (r.data.leave) { savePage('leave', r.data.leave); renderLeave(r.data.leave, false); } else await openLeave(true);
   banner('leaveBanner', '已請假：' + it.when + (r.data.late ? '（逾時請假）' : ''), r.data.late);
 }
 
@@ -1241,7 +1375,7 @@ async function doLeaveCancel(btn, it) {
   if (!armed(btn, '確定取消請假？')) return;
   const r = await send(btn, { action: 'leaveCancel', leaveId: it.leaveId }, '處理中…');
   if (!r.ok) return banner('leaveBanner', r.message, true);
-  await openLeave();
+  if (r.data.leave) { savePage('leave', r.data.leave); renderLeave(r.data.leave, false); } else await openLeave(true);
   banner('leaveBanner', '已取消請假：' + it.when);
 }
 
@@ -1317,15 +1451,36 @@ async function main() {
     setStale(true);
   }
 
-  // v3：現場簽到 → 定位和 GAS 同時進行
-  if (page === 'checkin') app.geoP = getLocation();
+  // v3.3：我的報名／請假／球敘 也先畫上次的資料；init 一併帶回這一頁的最新資料（只要 1 個請求）
+  const PAGE_DEF = {
+    my: { key: 'my', render: renderMy, view: 'viewMy' },
+    leave: { key: 'leave', render: renderLeave, view: 'viewLeave' },
+    gathering: { key: 'g:' + (app.params.id || 'today'), render: renderGatheringPage, view: 'viewGathering' },
+  };
+  const pdef = PAGE_DEF[page];
+  const pcached = pdef ? readPage(pdef.key) : null;
+  if (pcached) pdef.render(pcached.data, true);
+  let pageBody = null;
+  if (pdef) pageBody = { id: app.params.id || '' };
+  if (page === 'unformed') pageBody = { signupId: app.params.signup || '' };
+  if (page === 'checkin' && app.params.venue) {
+    // 現場簽到：先等定位，再把簽到和 init 一起送出（省一次來回）
+    show('viewLoading', '現場簽到');
+    const loc = await getLocation();
+    if (!loc.error) pageBody = { venue: app.params.venue, lat: loc.lat, lng: loc.lng, acc: loc.acc, gatherId: '', src: app.src || 'qr' };
+    else app.geoP = Promise.resolve(loc); // 交給 openCheckin 顯示定位問題
+  }
+
   // v3：LINE 名稱、好友檢查與 GAS 同時進行
   const friendP = checkFriend();
   const profileP = liff.getProfile().catch(() => null);
-  const d = await initCall({ action: 'init', src: app.src, withOptions: wantsOptions }, !!cached);
+  const quiet = !!cached || !!pcached;
+  const d = await initCall({ action: 'init', src: app.src, withOptions: wantsOptions, page: pageBody ? page : '', pageBody: pageBody }, quiet);
   if (!d) return;
   app.init = d;
-  if (d.options) saveOptionsCache(d.options);
+  if (d.options) { saveOptionsCache(d.options); app.optAt = Date.now(); }
+  if (d.page && pdef) app.prePage = { key: pdef.key, data: d.page };
+  else if (d.page) app.prePage = { key: page, data: d.page };
 
   app.friend = await friendP;
   app.profile = await profileP;
