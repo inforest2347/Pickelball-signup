@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>理論上匹克球</title>
 <!-- 學員官方帳號 LIFF　v3（2026/10/11）：v2 ＋ 免加好友報名、深層連結（type／id／src）、加好友邀請、電話只在課程時要求 -->
+<!-- v3.2（2026/10/19）：籌備中課程不顯示日期、課程候補「暫不需付款」、未成班三選項 順延／轉班／退款（須搭配 GAS v3.2） -->
 <style>
   :root {
     --green: #1f5f4a; --green-dark: #16463a; --green-light: #e6f0eb;
@@ -295,7 +296,7 @@
 const LIFF_ID = '2011932114-Fh1txi0y';          // 例：2001234567-AbCdEfGh
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzEMw17w0AZ_-E_MrQq2kBamkGTpCVNa7VGEA8-R-IYCP4x-9Hf4L9w8WRdvRH2iz-a/exec';  // https://script.google.com/macros/s/…/exec
 const SHOW_ERROR_CODE = false;                    // 測試期間顯示錯誤代碼；上線後改為 false
-const OA_BASIC_ID = '@251nkmih';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
+const OA_BASIC_ID = '@xxxxxxx';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
 
 // ================================================================
 // 共用
@@ -832,12 +833,12 @@ async function doSignup(btn, it, court, full) {
   const d = r.data;
   const myBtn = { label: '查看我的報名', fn: () => route('my') };
   if (d.status !== '已報名') {
-    return showDone('已加入候補', '目前候補第 ' + d.rank + ' 位。有人取消時會自動遞補，並在 LINE 通知你' + (it.kind === '球敘' ? '（遞補後需在期限內付款）' : '') + '。',
+    return showDone('已加入候補', '目前候補第 ' + d.rank + ' 位。' + (it.kind === '球敘' ? '有人取消時會自動遞補，並在 LINE 通知你（遞補後需在期限內付款）。' : '候補中，暫不需付款，遞補時會通知您。'),
       { icon: '⏳', wait: true, next: myBtn, friendText: '遞補成功時要在期限內付款，通知只會用 LINE 傳送。沒加入官方帳號會收不到，名額可能直接給下一位。' });
   }
   const lines = [it.title, it.timeLabel || it.when];
   if (court) lines.push('球面：' + court.name);
-  if (d.credit) lines.push('已用保留名額折抵 ' + money(d.credit));
+  if (d.credit) lines.push('已用先前已付款項折抵 ' + money(d.credit));
   if (d.amount > 0) {
     lines.push('');
     lines.push((d.kind === '首堂' ? '首堂費用 ' : '應繳 ') + money(d.amount) + (d.deadline ? '，請於 ' + d.deadline + ' 前完成付款，逾期名額會自動釋出。' : '。'));
@@ -877,8 +878,8 @@ async function openMy() {
 
 function statusBadge(it) {
   if (it.status === '候補') return el('span', { class: 'badge wait', text: '候補第 ' + it.rank + ' 位' });
-  if (it.status === '保留中') return el('span', { class: 'badge wait', text: '保留名額' });
-  if (it.classStatus === '籌備中') return el('span', { class: 'badge grey', text: '籌備中' });
+  if (it.status === '保留中') return el('span', { class: 'badge wait', text: it.choice === '順延' ? '順延中' : '未成班・待選擇' });
+  if (it.classStatus === '籌備中') return el('span', { class: 'badge grey', text: '待成班' });
   return el('span', { class: 'badge', text: '已報名' });
 }
 
@@ -890,7 +891,9 @@ function myCard(it) {
     else if (it.paid >= it.due) payText = '已繳清';
     else { payText = '未繳 ' + money(it.due - it.paid); payWarn = true; }
   } else if (it.status === '保留中') {
-    payText = '已付 ' + money(it.paid) + '（可折抵）';
+    payText = '已付 ' + money(it.paid) + '（保留）';
+  } else if (it.status === '候補' && it.type === '課程') {
+    payText = '暫不需付款';
   }
   const actions = [];
   if (it.type === '球敘' && it.status === '已報名') {
@@ -908,8 +911,8 @@ function myCard(it) {
   const meta = [it.kind, it.venue, it.courtName].filter(Boolean).join('・');
   let extra = null;
   if (it.deadline && payWarn) extra = el('div', { class: 'note warn', style: 'margin-top:4px', text: '付款期限 ' + it.deadline + '，逾期名額會自動釋出' });
-  if (it.status === '保留中') extra = el('div', { class: 'note', style: 'margin-top:4px', text: '這一期未成班。' + (it.choice ? '目前選擇：' + it.choice : '尚未選擇（預設保留名額，永久有效）') });
-  if (it.classStatus === '籌備中' && it.status === '已報名') extra = el('div', { class: 'note', style: 'margin-top:4px', text: '滿 ' + it.minSize + ' 人（已付款）成班，開課前 ' + it.confirmDays + ' 天確認並通知尾款。' });
+  if (it.status === '保留中') extra = el('div', { class: 'note', style: 'margin-top:4px', text: '這一期未成班。' + (it.choice === '順延' ? '目前選擇：順延（同據點下一期開班時通知你）' : it.choice ? '目前選擇：' + it.choice : '尚未選擇（預設順延）') });
+  if (it.classStatus === '籌備中' && it.status === '已報名') extra = el('div', { class: 'note', style: 'margin-top:4px', text: '滿 ' + it.minSize + ' 人（已付首堂）成班，成班確認後通知開課日期與尾款。' });
   return el('div', { class: 'item' }, [
     el('div', { class: 't', text: it.title }, [statusBadge(it)]),
     el('div', { class: 's', text: it.when }),
@@ -1023,7 +1026,7 @@ Array.from($('gSectionTabs').children).forEach((b) => b.addEventListener('click'
 $('gRefresh').addEventListener('click', () => openGathering(gState.id, true));
 
 // ================================================================
-// 未成班：保留名額／轉班／全額退款
+// 未成班：順延／轉班／退款（v3.2）
 // ================================================================
 const ufState = { signupId: '' };
 
@@ -1040,24 +1043,24 @@ async function openUnformed(signupId) {
     show('viewUnformed', '未成班處理');
     return;
   }
-  banner('ufBanner', d.title + ' 這一期人數不足、未能開班，很抱歉！\n你已付 ' + money(d.paid) + '，請選擇處理方式（未選擇時預設保留名額）。');
+  banner('ufBanner', d.title + ' 這一期人數不足、未能開班，很抱歉！\n你已付 ' + money(d.paid) + '，請選擇處理方式（未選擇時預設順延）。');
 
-  const keep = el('div', { class: 'opt' + (d.choice === '保留名額' ? ' on' : '') }, [
-    el('h3', { text: '保留名額' + (d.choice === '保留名額' ? '（目前選擇）' : '') }),
-    el('p', { text: '已付款項保留，永久有效。之後報名同類型的新班時，會自動折抵首堂；開新班時會通知你。' }),
+  const keep = el('div', { class: 'opt' + (d.choice === '順延' ? ' on' : '') }, [
+    el('h3', { text: '順延' + (d.choice === '順延' ? '（目前選擇）' : '') }),
+    el('p', { text: '等' + (d.venue ? ' ' + d.venue + ' ' : '同據點') + '下一期開班，名額與已付款項都保留；開新班時會通知你，由客服幫你移到新班。' }),
   ]);
-  if (d.choice !== '保留名額') {
-    const b = el('button', { class: 'act', type: 'button', text: '選擇保留名額' });
-    b.addEventListener('click', () => chooseUnformed(b, '保留名額'));
+  if (d.choice !== '順延') {
+    const b = el('button', { class: 'act', type: 'button', text: '選擇順延' });
+    b.addEventListener('click', () => chooseUnformed(b, '順延'));
     keep.appendChild(b);
   }
   body.appendChild(keep);
 
   const trans = el('div', { class: 'opt' }, [
-    el('h3', { text: '轉到其他班' }),
-    el('p', { text: '轉到同類型、還有名額的班級，已付款項直接折抵。' }),
+    el('h3', { text: '轉班' }),
+    el('p', { text: '轉到其他籌備中的同類型班級，已付款項直接帶過去。' }),
   ]);
-  if (!d.options.length) trans.appendChild(el('div', { class: 'note', text: '目前沒有可轉的班級，可以先保留名額，開新班時會通知你。' }));
+  if (!d.options.length) trans.appendChild(el('div', { class: 'note', text: '目前沒有可轉的班級，可以先選順延，開新班時會通知你。' }));
   d.options.forEach((o) => {
     const b = el('button', { class: 'act alt', type: 'button', text: '轉到這班' });
     b.addEventListener('click', () => chooseUnformed(b, '轉班', o));
@@ -1073,25 +1076,25 @@ async function openUnformed(signupId) {
   body.appendChild(trans);
 
   const refund = el('div', { class: 'opt' }, [
-    el('h3', { text: '全額退款' }),
-    el('p', { text: '退還已付的 ' + money(d.paid) + '，營運人員會與你聯絡完成退款。' }),
+    el('h3', { text: '退款' }),
+    el('p', { text: '全額退還已付的 ' + money(d.paid) + '，客服會與你聯絡退款帳戶。' }),
   ]);
-  const rb = el('button', { class: 'act danger', type: 'button', text: '申請全額退款' });
-  rb.addEventListener('click', () => chooseUnformed(rb, '全額退款'));
+  const rb = el('button', { class: 'act danger', type: 'button', text: '申請退款' });
+  rb.addEventListener('click', () => chooseUnformed(rb, '退款'));
   refund.appendChild(rb);
   body.appendChild(refund);
   show('viewUnformed', '未成班處理');
 }
 
 async function chooseUnformed(btn, choice, cls) {
-  const confirmText = choice === '轉班' ? '確定轉班？' : choice === '全額退款' ? '確定退款？' : '確定保留？';
+  const confirmText = choice === '轉班' ? '確定轉班？' : choice === '退款' ? '確定退款？' : '確定順延？';
   if (!armed(btn, confirmText)) return;
   const r = await send(btn, { action: 'unformedChoose', submissionId: newId(), signupId: ufState.signupId, choice: choice, classId: cls ? cls.id : '' }, '處理中…');
   if (!r.ok) return banner('ufBanner', r.message, true);
   const myBtn = { label: '查看我的報名', fn: () => route('my') };
-  if (choice === '保留名額') return showDone('已保留名額', '開同類型新班時會通知你，報名時自動折抵。', { next: myBtn });
-  if (choice === '全額退款') return showDone('已申請退款', '退款 ' + money(r.data.refund) + '，營運人員會與你聯絡完成退款。', { next: myBtn });
-  showDone('轉班完成', r.data.title + (r.data.due > 0 ? '\n折抵後尚需繳 ' + money(r.data.due) + (app.init.paymentInfo ? '\n' + app.init.paymentInfo : '') : '\n已全額折抵。'), { next: myBtn });
+  if (choice === '順延') return showDone('已選擇順延', '同據點下一期開班時會通知你，名額與款項都會保留。', { next: myBtn });
+  if (choice === '退款') return showDone('已申請退款', '退款 ' + money(r.data.refund) + '，客服會與你聯絡完成退款。', { next: myBtn });
+  showDone('轉班完成', r.data.title + '\n已付款項已帶到新班' + (r.data.due > 0 ? '，尚需繳 ' + money(r.data.due) + (app.init.paymentInfo ? '\n' + app.init.paymentInfo : '') : '。') + '\n成班後會通知開課日期與尾款。', { next: myBtn });
 }
 
 // ================================================================
