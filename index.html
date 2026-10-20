@@ -256,6 +256,7 @@
   <div class="stale-note">顯示上次的資料，更新中…</div>
   <div id="myBanner" class="banner hidden"></div>
   <div id="myPayInfo" class="banner hidden"></div>
+  <div id="myLessons" class="hidden"></div>
   <div id="myList"></div>
   <button class="link" type="button" onclick="openProfile('my')">修改基本資料</button>
 </main>
@@ -306,7 +307,7 @@
 const LIFF_ID = '2011932114-Fh1txi0y';          // 例：2001234567-AbCdEfGh
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzEMw17w0AZ_-E_MrQq2kBamkGTpCVNa7VGEA8-R-IYCP4x-9Hf4L9w8WRdvRH2iz-a/exec';  // https://script.google.com/macros/s/…/exec
 const SHOW_ERROR_CODE = false;                    // 測試期間顯示錯誤代碼；上線後改為 false
-const OA_BASIC_ID = '@251nkmih';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
+const OA_BASIC_ID = '@xxxxxxx';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
 
 // ================================================================
 // 共用
@@ -984,9 +985,35 @@ function renderMy(d, stale) {
     list.appendChild(el('button', { class: 'ghost', type: 'button', style: 'margin-top:12px', text: '去報名', onclick: () => route('signup') }));
   }
   d.items.forEach((it) => list.appendChild(myCard(it)));
+  renderMyLessons(d.lessons);
   $('friendStrip').classList.toggle('hidden', app.friend !== false);
   setViewStale('viewMy', stale);
   show('viewMy', '我的報名');
+}
+
+// v3.4（#88）：剩餘堂數、待補課（補課期限）
+function renderMyLessons(info) {
+  const box = $('myLessons');
+  box.innerHTML = '';
+  const show = !!info && (info.hasLessons || (info.makeups && info.makeups.length));
+  box.classList.toggle('hidden', !show);
+  if (!show) return;
+  const head = el('div', { class: 't', text: '我的堂數' }, [
+    el('span', { class: 'badge' + (info.lessons <= 1 ? ' warn' : ''), text: '剩餘 ' + info.lessons + ' 堂' }),
+  ]);
+  const rows = [head];
+  if (info.lessons <= 1 && info.hasLessons) rows.push(el('div', { class: 'note warn', style: 'margin-top:4px', text: '堂數快用完了，想續課請點「聯絡我們」。' }));
+  if (info.makeups && info.makeups.length) {
+    rows.push(el('div', { class: 's', style: 'margin-top:8px', text: '待補課 ' + info.makeups.length + ' 堂（請假未補）' }));
+    info.makeups.forEach((m) => {
+      rows.push(el('div', { class: 'm', style: 'margin-top:4px' }, [
+        el('span', { text: m.when + '　' + m.title }),
+        el('div', { class: 'note' + (m.soon ? ' warn' : ''), text: '補課期限 ' + m.deadline + (m.daysLeft <= 0 ? '（今天到期）' : '（剩 ' + m.daysLeft + ' 天）') }),
+      ]));
+    });
+    rows.push(el('div', { class: 'note', style: 'margin-top:6px', text: '要安排補課請點「聯絡我們」，客服會幫你找時間。' }));
+  }
+  box.appendChild(el('div', { class: 'item' }, rows));
 }
 
 function statusBadge(it) {
