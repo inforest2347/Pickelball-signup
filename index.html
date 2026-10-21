@@ -7,6 +7,8 @@
 <!-- 學員官方帳號 LIFF　v3（2026/10/11）：v2 ＋ 免加好友報名、深層連結（type／id／src）、加好友邀請、電話只在課程時要求 -->
 <!-- v3.2（2026/10/19）：籌備中課程不顯示日期、課程候補「暫不需付款」、未成班三選項 順延／轉班／退款（須搭配 GAS v3.2） -->
 <!-- v3.3（2026/10/19）：開頁只要 1 個請求（init 一併回傳頁面資料）、各頁先顯示手機上次的資料、操作後不再重讀（須搭配 GAS v3.3） -->
+<!-- v3.7.1（2026/10/21）：多人報名的確認畫面在手機上算（不多一個請求）、簽到 2 分鐘內沿用定位（須搭配 GAS v3.7.1） -->
+<!-- v3.7（2026/10/21）：家長代報名 — 報名對象、我的家人、我的報名篩選與待付合計、請假／簽到選家人、球敘頁標示家人、分享報名連結（須搭配 GAS v3.7） -->
 <link rel="preconnect" href="https://script.google.com" crossorigin>
 <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
 <link rel="preconnect" href="https://api.line.me" crossorigin>
@@ -141,6 +143,31 @@
   .hello { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
   .hello img, .hello .ph { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; background: var(--green-light); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: var(--green-dark); font-size: 20px; flex: 0 0 auto; }
   .hello .hn { font-size: 17px; font-weight: 700; color: var(--green-dark); }
+  /* v3.7：家人 */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: #fff; color: var(--text); border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 600; }
+  .chip.on { background: var(--green); border-color: var(--green); color: #fff; }
+  .chip.add { border-style: dashed; color: var(--green-dark); font-weight: 600; }
+  .who-bar { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px; }
+  .who-bar .step { margin-bottom: 8px; }
+  .filter { margin-bottom: 12px; }
+  .filter .chip { padding: 5px 12px; font-size: 13px; }
+  .tagname { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 6px; background: #eef3f8; color: #2c4f75; margin-right: 6px; vertical-align: 2px; }
+  .fam-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid #edf1ef; }
+  .fam-row:first-of-type { border-top: 0; }
+  .fam-row .fn { font-weight: 700; color: var(--green-dark); }
+  .radio-chips { display: flex; gap: 8px; }
+  .consent { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+  .consent input { accent-color: var(--green); width: 18px; height: 18px; margin-top: 2px; flex: 0 0 auto; }
+  input[type=date] { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--text); font-family: inherit; min-height: 44px; }
+  .plan { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid #edf1ef; font-size: 15px; }
+  .plan:first-of-type { border-top: 0; }
+  .sum { display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: var(--warn); font-size: 15px; }
+  button.share { border: 1px solid #06c755; background: #fff; color: #0b7a3b; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: rgba(22,70,58,.95); color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 50; max-width: 90%; text-align: center; }
+  .sheet { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet .box { background: #fff; width: 100%; max-width: 560px; border-radius: 16px 16px 0 0; padding: 18px 16px 24px; }
+  .sheet input { width: 100%; font-size: 14px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; margin: 10px 0; }
 </style>
 </head>
 <body>
@@ -171,6 +198,7 @@
   </div>
   <div style="max-width:320px;margin:24px auto 0">
     <button class="primary hidden" id="btnDoneNext" type="button"></button>
+    <button class="ghost share hidden" style="margin-top:10px" id="btnDoneShare" type="button">分享報名連結給朋友</button>
     <button class="ghost" style="margin-top:10px" onclick="closeLiff()">關閉</button>
   </div>
 </section>
@@ -236,6 +264,65 @@
     <div class="hint">報名「DUPR 球敘」時需要雙打分數。目前為自評，不會上傳到 DUPR。</div>
   </div>
   <button class="primary" id="btnProfile" type="button">儲存</button>
+  <!-- v3.7：我的家人 -->
+  <div class="card hidden" id="p_familyCard" style="margin-top:18px">
+    <h2>我的家人</h2>
+    <div class="note" style="margin:-4px 0 8px">可以替孩子或沒有 LINE 的家人報名、請假與簽到；費用與通知由你處理。</div>
+    <div id="p_family"></div>
+    <button class="ghost" type="button" id="btnAddFamily" style="margin-top:8px">＋ 新增家人</button>
+  </div>
+</main>
+
+<!-- ============ v3.7：新增／編輯家人 ============ -->
+<main id="viewFamily" class="hidden">
+  <div id="famBanner" class="banner hidden"></div>
+  <div class="card">
+    <div class="field">
+      <label class="title">關係</label>
+      <div class="radio-chips" id="f_rel"></div>
+    </div>
+    <div class="field" data-field="f姓名">
+      <label class="title" for="f_name">姓名<span class="req">*</span></label>
+      <input type="text" id="f_name" maxlength="30" placeholder="王小明">
+      <div class="error-text">請填寫姓名</div>
+    </div>
+    <div class="field" data-field="f生日">
+      <label class="title" for="f_birth">生日<span class="req">*</span></label>
+      <input type="date" id="f_birth">
+      <div class="error-text">請填寫生日</div>
+      <div class="hint">兒童課程的年齡參考。</div>
+    </div>
+    <div class="field" id="f_levelField">
+      <label class="title" for="f_level">程度（自評）</label>
+      <select id="f_level"></select>
+    </div>
+    <div class="field" data-field="fDUPR">
+      <label class="title" for="f_dupr">DUPR 雙打（自評）<span class="req hidden" id="f_duprReq">*</span></label>
+      <input type="text" id="f_dupr" inputmode="decimal" maxlength="5" placeholder="選填，例 3.0">
+      <div class="error-text">請填 1～8 之間的數字</div>
+    </div>
+    <div class="field" data-field="f電話">
+      <label class="title" for="f_phone">電話</label>
+      <input type="tel" id="f_phone" inputmode="numeric" maxlength="12" placeholder="沿用我的電話">
+      <div class="error-text">請填寫正確的手機號碼，例如 0912345678</div>
+      <div class="hint">沒有手機可以不填，開班與退款會聯絡你。</div>
+    </div>
+    <div class="field" id="f_consentField" data-field="f同意">
+      <label class="consent"><input type="checkbox" id="f_consent"><span>我是此學員的家長／監護人</span></label>
+      <div class="error-text">請勾選</div>
+    </div>
+  </div>
+  <button class="primary" id="btnFamily" type="button">儲存</button>
+  <button class="ghost hidden" id="btnFamilyRemove" type="button" style="margin-top:10px;color:var(--warn);border-color:var(--warn)">移除這位家人</button>
+  <button class="link" type="button" id="btnFamilyBack">返回</button>
+</main>
+
+<!-- ============ v3.7：多人報名確認（Q3） ============ -->
+<main id="viewConfirm" class="hidden">
+  <div id="cfBanner" class="banner"></div>
+  <div class="card" id="cfList"></div>
+  <button class="primary" id="btnConfirm" type="button">確認送出</button>
+  <button class="link" type="button" id="btnConfirmBack">返回修改</button>
 </main>
 
 <!-- ============ 報名：據點 → 時間 → 球面 ============ -->
@@ -245,6 +332,7 @@
     <button type="button" id="tabGather">球敘</button>
   </div>
   <div class="stale-note">顯示上次的資料，名額更新中…</div>
+  <div class="who-bar hidden" id="whoBar"></div>
   <div class="crumbs" id="crumbs"></div>
   <div id="signupBanner" class="banner hidden"></div>
   <div id="signupList"></div>
@@ -255,10 +343,11 @@
   <div class="friend-strip hidden" id="friendStrip"><span>還沒加入官方帳號，付款期限與遞補通知會收不到</span><button type="button" class="btnAddFriend">加入</button></div>
   <div class="stale-note">顯示上次的資料，更新中…</div>
   <div id="myBanner" class="banner hidden"></div>
+  <div class="chips filter hidden" id="myFilter"></div>
   <div id="myPayInfo" class="banner hidden"></div>
   <div id="myLessons" class="hidden"></div>
   <div id="myList"></div>
-  <button class="link" type="button" onclick="openProfile('my')">修改基本資料</button>
+  <button class="link" type="button" id="myProfileLink" onclick="openProfile('my')">修改基本資料</button>
 </main>
 
 <!-- ============ 球敘頁：成員、輪轉表、積分榜 ============ -->
@@ -296,8 +385,18 @@
 <main id="viewLeave" class="hidden">
   <div class="stale-note">顯示上次的資料，更新中…</div>
   <div class="banner" id="leaveBanner"></div>
+  <div class="chips filter hidden" id="leaveFilter"></div>
   <div id="leaveList"></div>
 </main>
+
+<div id="toast" class="hidden"></div>
+<div id="shareSheet" class="sheet hidden"><div class="box">
+  <div style="font-weight:700;color:var(--green-dark)">複製報名連結</div>
+  <div class="note">這支手機不支援直接分享，請複製下面的連結，貼到 LINE 聊天室給朋友。</div>
+  <input type="text" id="shareText" readonly>
+  <button class="primary" type="button" id="btnShareCopy">複製</button>
+  <button class="link" type="button" onclick="$('shareSheet').classList.add('hidden')">關閉</button>
+</div></div>
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
@@ -307,13 +406,13 @@
 const LIFF_ID = '2011932114-Fh1txi0y';          // 例：2001234567-AbCdEfGh
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzEMw17w0AZ_-E_MrQq2kBamkGTpCVNa7VGEA8-R-IYCP4x-9Hf4L9w8WRdvRH2iz-a/exec';  // https://script.google.com/macros/s/…/exec
 const SHOW_ERROR_CODE = false;                    // 測試期間顯示錯誤代碼；上線後改為 false
-const OA_BASIC_ID = '@251nkmih';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
+const OA_BASIC_ID = '@xxxxxxx';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
 
 // ================================================================
 // 共用
 // ================================================================
 const $ = (id) => document.getElementById(id);
-const VIEWS = ['viewLoading', 'viewError', 'viewDone', 'viewWelcome', 'viewProfile', 'viewSignup', 'viewMy', 'viewGathering', 'viewUnformed', 'viewLeave', 'viewCheckin'];
+const VIEWS = ['viewLoading', 'viewError', 'viewDone', 'viewWelcome', 'viewProfile', 'viewSignup', 'viewMy', 'viewGathering', 'viewUnformed', 'viewLeave', 'viewCheckin', 'viewFamily', 'viewConfirm'];
 const app = { idToken: '', params: {}, init: null, src: '', friend: null, view: '', mem: {}, prePage: null, optAt: 0 };
 
 function show(view, title) {
@@ -340,6 +439,10 @@ function showDone(title, msg, opts) {
   const b = $('btnDoneNext');
   b.classList.toggle('hidden', !opts.next);
   if (opts.next) { b.textContent = opts.next.label; b.onclick = opts.next.fn; }
+  // v3.7：分享報名連結
+  const sb = $('btnDoneShare');
+  sb.classList.toggle('hidden', !opts.share);
+  sb.onclick = opts.share ? () => shareItem(opts.share) : null;
   show('viewDone', title);
 }
 function newId() {
@@ -517,7 +620,7 @@ function avatar(m) {
   return m.pic ? el('img', { src: m.pic, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : el('span', { class: 'ph', text: (m.name || '?').charAt(0) });
 }
 function memberChip(m) {
-  return el('span', { class: 'mem' + (m.me ? ' me' : '') + (m.left ? ' left' : '') }, [
+  return el('span', { class: 'mem' + (m.me || m.fam ? ' me' : '') + (m.left ? ' left' : '') }, [
     avatar(m),
     el('span', { text: m.name + (m.left ? '（離場）' : '') }),
     m.dupr ? el('span', { class: 'dupr', text: m.dupr }) : null,
@@ -631,6 +734,7 @@ function openProfile(nextPage, opts) {
     banner('profileBanner', d.student ? '更新你的聯絡資料。' : '第一次使用，請先填寫基本資料，之後報名就不用再填。');
   }
   $('btnProfile').textContent = (!d.student || profileState.needDupr || profileState.needPhone) && nextPage && nextPage !== 'profile' ? '儲存並繼續' : '儲存';
+  renderProfileFamily();
   show('viewProfile', d.student ? '基本資料' : '歡迎！');
   if (profileState.needDupr || profileState.needPhone) {
     const box = document.querySelector(profileState.needPhone ? '[data-field="電話"]' : '[data-field="DUPR雙打"]');
@@ -675,10 +779,213 @@ $('btnProfile').addEventListener('click', async () => {
   showDone('已儲存', '基本資料已更新。');
 });
 
+
+// ================================================================
+// v3.7：我的家人（規格第 03 節）
+// ================================================================
+function familyOn() { return !!(app.init && app.init.familyOn); }
+function family() { return (familyOn() && app.init.family) || []; }
+function myId() { return ((app.init && app.init.student) || {}).id || ''; }
+function personName(id) {
+  if (!id || id === myId()) return '我';
+  const f = family().find((x) => x.id === id);
+  return f ? f.name : '';
+}
+/** 家人清單有變動：記住最新清單，報名頁與各頁的快取下次重讀 */
+function setFamily(list) {
+  if (!Array.isArray(list)) return;
+  app.init.family = list;
+  app.optAt = 0;
+  app.mem = {};
+}
+function whoTag(who) {
+  if (!who || who.self || !family().length) return null;
+  return el('span', { class: 'tagname', text: who.name });
+}
+
+function renderProfileFamily() {
+  const card = $('p_familyCard');
+  card.classList.toggle('hidden', !familyOn() || !app.init.student);
+  if (!familyOn()) return;
+  const box = $('p_family');
+  box.innerHTML = '';
+  const fam = family();
+  if (!fam.length) box.appendChild(el('div', { class: 'note', text: '還沒有家人資料。' }));
+  fam.forEach((f) => {
+    const sub = [f.relation, f.age !== null && f.age !== undefined ? f.age + ' 歲' : '', f.levelName, f.dupr ? 'DUPR ' + f.dupr : ''].filter(Boolean).join('・');
+    box.appendChild(el('div', { class: 'fam-row' }, [
+      el('div', {}, [el('div', { class: 'fn', text: f.name }), el('div', { class: 'note', text: sub })]),
+      el('button', { class: 'act alt', type: 'button', text: '編輯', onclick: () => openFamilyForm(f, 'profile') }),
+    ]));
+  });
+  const add = $('btnAddFamily');
+  const max = app.init.familyMax || 5;
+  add.disabled = fam.length >= max;
+  add.textContent = fam.length >= max ? '最多 ' + max + ' 位家人' : '＋ 新增家人';
+  add.onclick = () => openFamilyForm(null, 'profile');
+}
+
+const famState = { member: null, back: 'profile', opts: {}, submissionId: newId() };
+
+/** member：null＝新增；back：'profile'／'signup'；opts.needDupr：從 DUPR 球敘過來 */
+function openFamilyForm(member, back, opts) {
+  famState.member = member || null;
+  famState.back = back || 'profile';
+  famState.opts = opts || {};
+  famState.submissionId = newId();
+  const isNew = !member;
+  const m = member || {};
+  if (isNew && family().length >= (app.init.familyMax || 5)) {
+    return showDone('家人已達上限', '每位最多建立 ' + (app.init.familyMax || 5) + ' 位家人，需要更多請點「聯絡我們」。', { icon: '!', wait: true });
+  }
+  document.querySelectorAll('#viewFamily [data-field]').forEach((x) => x.classList.remove('invalid'));
+  const rels = app.init.relations || ['子女', '其他家人'];
+  famState.relation = m.relation || rels[0];
+  const rb = $('f_rel');
+  rb.innerHTML = '';
+  rels.forEach((r) => rb.appendChild(el('button', { type: 'button', class: 'chip' + (r === famState.relation ? ' on' : ''), text: r, onclick: () => {
+    famState.relation = r;
+    Array.from(rb.children).forEach((b) => b.classList.toggle('on', b.textContent === r));
+  } })));
+  $('f_name').value = m.name || '';
+  $('f_birth').value = m.birthday || '';
+  $('f_birth').max = new Date().toISOString().slice(0, 10);
+  const lv = $('f_level');
+  lv.innerHTML = '';
+  lv.appendChild(el('option', { value: '', text: '不確定／不選' }));
+  (app.init.levels || []).forEach((l) => lv.appendChild(el('option', { value: l.id, text: l.name })));
+  lv.value = m.level || '';
+  lv.disabled = !!m.level; // 程度以教練判斷為準，空白時才能自填
+  $('f_dupr').value = m.dupr || '';
+  $('f_duprReq').classList.toggle('hidden', !famState.opts.needDupr);
+  $('f_phone').value = m.phone || '';
+  $('f_consent').checked = false;
+  $('f_consentField').classList.toggle('hidden', !isNew);
+  $('btnFamilyRemove').classList.toggle('hidden', isNew);
+  $('btnFamily').textContent = famState.back === 'signup' ? '儲存並回到報名' : '儲存';
+  if (famState.opts.needDupr) banner('famBanner', '這場是 DUPR 球敘，請填寫 ' + (m.name || '家人') + ' 的 DUPR 雙打分數（自評）。', true);
+  else banner('famBanner', isNew ? '新增後，報名時可以選擇替這位家人報名。' : '');
+  show('viewFamily', isNew ? '新增家人' : '編輯家人');
+}
+
+function familyBack(addedId) {
+  if (famState.back === 'signup') {
+    if (addedId) {
+      if (signupState.tab === 'class') signupState.who = [addedId];
+      else if (signupState.who.indexOf(addedId) < 0) signupState.who.push(addedId);
+    }
+    return reloadSignup();
+  }
+  return openProfile(profileNext || 'profile');
+}
+
+$('btnFamilyBack').addEventListener('click', () => familyBack());
+
+$('btnFamily').addEventListener('click', async () => {
+  const isNew = !famState.member;
+  const member = {
+    id: isNew ? '' : famState.member.id,
+    relation: famState.relation,
+    name: $('f_name').value.trim(),
+    birthday: $('f_birth').value,
+    level: $('f_level').disabled ? '' : $('f_level').value,
+    dupr: $('f_dupr').value.trim(),
+    phone: normalizePhone($('f_phone').value),
+    consent: $('f_consent').checked,
+  };
+  const bad = {
+    f姓名: !member.name,
+    f生日: !member.birthday,
+    fDUPR: !duprOk(member.dupr, !!famState.opts.needDupr),
+    f電話: member.phone ? !/^0\d{8,9}$/.test(member.phone) : false,
+    f同意: isNew && !member.consent,
+  };
+  Object.keys(bad).forEach((k) => document.querySelector('#viewFamily [data-field="' + k + '"]').classList.toggle('invalid', bad[k]));
+  if (Object.values(bad).some(Boolean)) return;
+  const r = await send($('btnFamily'), { action: 'familySave', submissionId: famState.submissionId, member: member }, '儲存中…');
+  if (!r.ok) return banner('famBanner', r.message, true);
+  setFamily(r.data.family);
+  toast(isNew ? '已新增：' + member.name : '已更新：' + member.name);
+  familyBack(isNew ? r.data.id : '');
+});
+
+$('btnFamilyRemove').addEventListener('click', async () => {
+  const btn = $('btnFamilyRemove');
+  if (!armed(btn, '確定移除？')) return;
+  const r = await send(btn, { action: 'familyRemove', memberId: famState.member.id }, '處理中…');
+  if (!r.ok) return banner('famBanner', r.message, true);
+  setFamily(r.data.family);
+  signupState.who = signupState.who.filter((id) => id !== famState.member.id);
+  toast('已移除：' + famState.member.name);
+  familyBack();
+});
+
+// ================================================================
+// v3.7：分享報名連結（規格第 05 節 B）：shareTargetPicker，不支援時複製連結
+// ================================================================
+function shareUrl(it) {
+  return 'https://liff.line.me/' + LIFF_ID + '?type=' + (it.kind === '課程' ? 'class' : 'game') + '&id=' + encodeURIComponent(it.id) + '&src=share';
+}
+function shareFlex(it, url) {
+  const lines = [it.when || it.timeLabel || '', [it.venue, it.kind].filter(Boolean).join('・')].filter(Boolean);
+  return {
+    type: 'flex',
+    altText: '一起來打球：' + it.title,
+    contents: {
+      type: 'bubble', size: 'kilo',
+      header: { type: 'box', layout: 'vertical', backgroundColor: '#1F5F4A', paddingAll: '14px', contents: [
+        { type: 'text', text: '一起來打匹克球！', color: '#FFFFFF', weight: 'bold', size: 'md' },
+        { type: 'text', text: '理論上匹克球', color: '#CFE3D9', size: 'xs' },
+      ] },
+      body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px', contents: [
+        { type: 'text', text: String(it.title || '').slice(0, 60) || '報名', weight: 'bold', size: 'md', color: '#16463A', wrap: true },
+      ].concat(lines.map((t) => ({ type: 'text', text: t.slice(0, 80), size: 'sm', color: '#555555', wrap: true }))) },
+      footer: { type: 'box', layout: 'vertical', paddingAll: '12px', contents: [
+        { type: 'button', style: 'primary', color: '#06C755', height: 'sm', action: { type: 'uri', label: '我也要報名', uri: url } },
+      ] },
+    },
+  };
+}
+async function shareItem(it) {
+  const url = shareUrl(it);
+  try {
+    if (window.liff && liff.isApiAvailable && liff.isApiAvailable('shareTargetPicker')) {
+      const res = await liff.shareTargetPicker([shareFlex(it, url)], { isMultiple: true });
+      if (res) toast('已分享');
+      return; // res 為 undefined＝使用者取消
+    }
+  } catch (e) {
+    console.warn('shareTargetPicker', e);
+  }
+  $('shareText').value = it.title + '\n' + url;
+  $('shareSheet').classList.remove('hidden');
+}
+$('btnShareCopy').addEventListener('click', async () => {
+  const t = $('shareText');
+  let ok = false;
+  try { await navigator.clipboard.writeText(t.value); ok = true; } catch (e) {
+    try { t.select(); ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+  }
+  $('btnShareCopy').textContent = ok ? '已複製，貼到 LINE 即可' : '請長按上面的連結複製';
+  setTimeout(() => { $('btnShareCopy').textContent = '複製'; }, 2500);
+});
+function shareButton(it) {
+  return el('button', { class: 'act alt share', type: 'button', text: '分享', onclick: () => shareItem(it) });
+}
+
+let toastTimer = null;
+function toast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 2500);
+}
+
 // ================================================================
 // 報名：① 據點 → ② 時間 → ③ 球面
 // ================================================================
-const signupState = { tab: 'class', data: null, venue: '', time: '', only: '' };
+const signupState = { tab: 'class', data: null, venue: '', time: '', only: '', who: [] }; // v3.7：who＝報名對象（學員ID）
 
 async function openSignup(tab) {
   signupState.tab = tab === 'class' ? 'class' : 'gathering'; // v3：選單合併後預設球敘
@@ -788,6 +1095,7 @@ function renderSignup() {
   $('tabGather').classList.toggle('on', !isClass);
   $('pageTitle').textContent = isClass ? '報名課程' : '報名球敘';
   banner('signupBanner', '');
+  renderWhoBar();
   const list = $('signupList');
   list.innerHTML = '';
   const items = itemsOfTab();
@@ -835,7 +1143,7 @@ function renderSignup() {
       const sub = isClass
         ? t.items.map((c) => c.title).join('、')
         : t.items.map((g) => g.title + '（' + g.typeLabel + '）').join('、');
-      const mine = t.items.some((it) => it.mine);
+      const mine = t.items.some((it) => signupState.who.some((pid) => mineOf(it, pid)));
       list.appendChild(pickRow(t.label, (mine ? '✓ 已報名・' : '') + sub, () => { signupState.time = t.key; renderSignup(); }));
     });
     return;
@@ -853,6 +1161,48 @@ function renderSignup() {
     else it.courts.forEach((ct) => list.appendChild(gatherCourtCard(it, ct)));
   });
 }
+
+
+// ---- v3.7：報名對象（有家人資料時才出現；課程一次一位、球敘可複選） ----
+function renderWhoBar() {
+  const bar = $('whoBar');
+  bar.innerHTML = '';
+  const fam = family();
+  const me = myId();
+  const isClass = signupState.tab === 'class';
+  signupState.who = (signupState.who || []).filter((id) => id === me || fam.some((f) => f.id === id));
+  if (!signupState.who.length) signupState.who = [me];
+  if (isClass && signupState.who.length > 1) signupState.who = [signupState.who[0]];
+  if (!fam.length) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  bar.appendChild(el('div', { class: 'step', text: '報名對象' + (isClass ? '（課程一次選一位）' : '（可複選）') }));
+  const chips = el('div', { class: 'chips' });
+  [{ id: me, name: '我自己' }].concat(fam).forEach((p) => {
+    const on = signupState.who.indexOf(p.id) >= 0;
+    chips.appendChild(el('button', { type: 'button', class: 'chip' + (on ? ' on' : ''), text: (on ? '✓ ' : '') + p.name, onclick: () => toggleWho(p.id) }));
+  });
+  if (fam.length < (app.init.familyMax || 5)) chips.appendChild(el('button', { type: 'button', class: 'chip add', text: '＋新增家人', onclick: () => openFamilyForm(null, 'signup') }));
+  bar.appendChild(chips);
+}
+function toggleWho(id) {
+  if (signupState.tab === 'class') signupState.who = [id];
+  else {
+    const i = signupState.who.indexOf(id);
+    if (i >= 0 && signupState.who.length > 1) signupState.who.splice(i, 1);
+    else if (i < 0) signupState.who.push(id);
+  }
+  renderSignup();
+}
+/** 某人在這個課程／球敘的報名狀態：{ status, courtId } 或 null */
+function mineOf(it, pid) {
+  if (it.mineBy) return it.mineBy[pid] || null;
+  return pid === myId() && it.mine ? { status: it.mine, courtId: it.mineCourt || '' } : null;
+}
+function eligOf(g, pid) {
+  if (g.eligibleBy && g.eligibleBy[pid]) return g.eligibleBy[pid];
+  return pid === myId() ? g.eligible : { ok: true, code: '', note: '' };
+}
+function whoLabel(pid) { return pid === myId() ? '我' : personName(pid); }
 
 function groupTimes(items) {
   const map = {};
@@ -873,11 +1223,14 @@ function pickRow(title, sub, fn) {
 /** 課程：不顯示人數，只標可報名／已額滿 */
 function classCourtCard(it) {
   let right;
-  if (it.mine) {
-    right = el('span', { class: 'badge' + (it.mine === '候補' ? ' wait' : ''), text: it.mine === '候補' ? '候補中' : it.mine });
+  const pid = signupState.who[0] || myId();
+  const m = mineOf(it, pid);
+  const who = pid === myId() ? '' : personName(pid) + ' ';
+  if (m) {
+    right = el('span', { class: 'badge' + (m.status === '候補' ? ' wait' : ''), text: who + (m.status === '候補' ? '候補中' : m.status) });
   } else {
-    right = el('button', { class: 'act' + (it.full ? ' alt' : ''), type: 'button', text: it.full ? '排候補' : '報名' });
-    right.addEventListener('click', () => doSignup(right, it, null, it.full));
+    right = el('button', { class: 'act' + (it.full ? ' alt' : ''), type: 'button', text: (it.full ? '排候補' : '報名') + (who ? '（' + personName(pid) + '）' : '') });
+    right.addEventListener('click', () => doSignup(right, it, null, it.full, [pid]));
   }
   const fee = it.preopen
     ? '籌備中：先付首堂 ' + money(it.firstFee) + '，成班後繳尾款（總計 ' + money(it.fee) + '）'
@@ -892,25 +1245,44 @@ function classCourtCard(it) {
 
 /** 球敘：每一面顯示人數與成員 */
 function gatherCourtCard(g, ct) {
-  const isMineHere = g.mine && g.mineCourt === ct.id;
+  // v3.7：依「報名對象」逐人判斷（只有自己時與 v3.6 相同）
+  const states = signupState.who.map((pid) => ({ pid: pid, m: mineOf(g, pid), e: eligOf(g, pid) }));
+  const todo = states.filter((x) => !x.m);
+  const ok = todo.filter((x) => x.e.ok);
+  const bad = todo.filter((x) => !x.e.ok);
+  const solo = states.length === 1 && states[0].pid === myId();
+  const courtName = (id) => ((g.courts || []).find((c) => c.id === id) || {}).name || '其他面';
   let right;
-  let note = null;
-  if (g.mine) {
-    right = isMineHere
-      ? el('span', { class: 'badge' + (g.mine === '候補' ? ' wait' : ''), text: g.mine === '候補' ? '候補中' : '已報名' })
-      : el('span', { class: 'note', text: '你已報名這一場的其他面' });
-  } else if (!g.eligible.ok) {
-    if (g.eligible.code === 'NEED_DUPR') {
-      right = el('button', { class: 'act alt', type: 'button', text: '填寫 DUPR' });
-      right.addEventListener('click', () => openProfile('signup', { needDupr: true }));
+  const notes = [];
+  if (!todo.length) {
+    if (solo) {
+      const m = states[0].m;
+      right = m.courtId === ct.id
+        ? el('span', { class: 'badge' + (m.status === '候補' ? ' wait' : ''), text: m.status === '候補' ? '候補中' : '已報名' })
+        : el('span', { class: 'note', text: '你已報名這一場的其他面' });
     } else {
-      right = el('span', { class: 'badge warn', text: g.eligible.code === 'DUPR' ? 'DUPR 分數不符' : '程度不符' });
+      right = el('span', { class: 'badge', text: '都已報名' });
     }
-    note = el('div', { class: 'note warn', style: 'margin-top:6px', text: g.eligible.note });
+  } else if (!ok.length) {
+    const b0 = bad[0];
+    if (bad.length === 1 && b0.e.code === 'NEED_DUPR') {
+      right = el('button', { class: 'act alt', type: 'button', text: '填寫 DUPR' + (b0.pid === myId() ? '' : '（' + personName(b0.pid) + '）') });
+      right.addEventListener('click', () => (b0.pid === myId()
+        ? openProfile('signup', { needDupr: true })
+        : openFamilyForm(family().find((f) => f.id === b0.pid), 'signup', { needDupr: true })));
+    } else {
+      right = el('span', { class: 'badge warn', text: bad.length > 1 ? '資格不符' : b0.e.code === 'DUPR' ? 'DUPR 分數不符' : '程度不符' });
+    }
   } else {
-    right = el('button', { class: 'act' + (ct.full ? ' alt' : ''), type: 'button', text: ct.full ? '排候補' : '報名' });
-    right.addEventListener('click', () => doSignup(right, g, ct, ct.full));
+    const n = ok.length;
+    right = el('button', { class: 'act' + (ct.full ? ' alt' : ''), type: 'button', text: (ct.full ? '排候補' : '報名') + (solo ? '' : n > 1 ? ' ' + n + ' 人' : '（' + whoLabel(ok[0].pid) + '）') });
+    right.addEventListener('click', () => doSignup(right, g, ct, ct.full, ok.map((x) => x.pid)));
   }
+  if (!solo) {
+    states.filter((x) => x.m).forEach((x) => notes.push(whoLabel(x.pid) + (x.m.status === '候補' ? ' 候補中' : ' 已報名') + '（' + courtName(x.m.courtId) + '）'));
+    bad.forEach((x) => notes.push(whoLabel(x.pid) + '：' + x.e.note));
+  } else if (bad.length) notes.push(bad[0].e.note);
+  const note = notes.length ? el('div', { class: 'note' + (bad.length ? ' warn' : ''), style: 'margin-top:6px;white-space:pre-line', text: notes.join('\n') }) : null;
   return el('div', { class: 'item' }, [
     el('div', { class: 't', text: ct.name }, [el('span', { class: 'badge', text: g.typeLabel })]),
     el('div', { class: 's', text: g.title }),
@@ -924,42 +1296,135 @@ function gatherCourtCard(g, ct) {
   ]);
 }
 
-async function doSignup(btn, it, court, full) {
+/**
+ * v3.7：ids＝報名對象（預設自己）。多人時先顯示預計結果（誰可報名／誰候補／誰不符），確認後才送出（Q3）
+ * v3.7.1：預計結果用報名頁手上的名額（court.left）在手機上算，不再多一個請求；實際結果以送出後 GAS 回傳為準
+ */
+async function doSignup(btn, it, court, full, ids) {
+  ids = ids && ids.length ? ids : [myId()];
+  const payload = { action: 'signup', submissionId: newId(), type: it.kind, targetId: it.id, courtId: court ? court.id : '', src: app.src, forIds: ids };
+  if (ids.length > 1) return openConfirm(it, court, payload, { results: localPlan(it, court, ids) });
   if (!armed(btn, full ? '確定排候補？' : '確定報名？')) return;
-  const r = await send(btn, {
-    action: 'signup', submissionId: newId(), type: it.kind, targetId: it.id, courtId: court ? court.id : '', src: app.src,
-  }, '送出中…');
-  if (!r.ok) {
-    if (r.error === 'NEED_PROFILE') return openProfile('signup');
-    if (r.error === 'NEED_DUPR') return openProfile('signup', { needDupr: true });
-    if (r.error === 'NEED_PHONE') return openProfile('signup', { needPhone: true });
-    if (r.uncertain) return showDone('可能已送出', r.message, { icon: '!', wait: true, next: { label: '查看我的報名', fn: () => route('my') } });
-    return banner('signupBanner', r.message, true);
+  const r = await send(btn, payload, '送出中…');
+  if (!r.ok) return signupFail(r, it);
+  signupDone(it, court, r.data);
+}
+
+/** v3.7.1：依勾選順序分配剩餘名額（與 GAS planSignups_ 相同規則）；舊資料沒有 left 時用 cap－count */
+function localPlan(it, court, ids) {
+  let left = court ? (typeof court.left === 'number' ? court.left : (court.cap ? Math.max(0, court.cap - court.count) : 99)) : 99;
+  if (court && court.full) left = 0;
+  return ids.map((pid) => {
+    const out = { id: pid, name: personName(pid), self: pid === myId(), status: '', note: '' };
+    const m = mineOf(it, pid);
+    if (m) return Object.assign(out, { note: '已經報名過了' });
+    const e = it.kind === '球敘' ? eligOf(it, pid) : { ok: true };
+    if (!e.ok) return Object.assign(out, { note: e.note });
+    out.status = left > 0 ? '已報名' : '候補';
+    if (left > 0) left -= 1;
+    return out;
+  });
+}
+
+function signupFail(r, it) {
+  if (r.error === 'NEED_PROFILE') return openProfile('signup');
+  if (r.error === 'NEED_DUPR') {
+    const f = r.memberId ? family().find((x) => x.id === r.memberId) : null;
+    return f ? openFamilyForm(f, 'signup', { needDupr: true }) : openProfile('signup', { needDupr: true });
   }
-  const d = r.data;
+  if (r.error === 'NEED_PHONE') return openProfile('signup', { needPhone: true });
+  if (r.uncertain) return showDone('可能已送出', r.message, { icon: '!', wait: true, next: { label: '查看我的報名', fn: () => route('my') } });
+  if (app.view !== 'viewSignup') show('viewSignup');
+  return banner('signupBanner', r.message, true);
+}
+
+/** v3.7：多人報名確認畫面 */
+function openConfirm(it, court, payload, pv) {
+  const list = $('cfList');
+  list.innerHTML = '';
+  const go = pv.results.filter((x) => x.status);
+  banner('cfBanner', it.title + '\n' + (it.timeLabel || it.when || '') + (court ? '　' + court.name : '') + '\n名額依勾選順序分配，請確認（以送出後的結果為準）：');
+  pv.results.forEach((x) => {
+    const tag = x.status === '已報名' ? el('span', { class: 'badge', text: '可報名' })
+      : x.status === '候補' ? el('span', { class: 'badge wait', text: '進候補' })
+        : el('span', { class: 'badge warn', text: '不報名' });
+    list.appendChild(el('div', { class: 'plan' }, [
+      el('div', {}, [el('div', { style: 'font-weight:700', text: x.self ? '我' : x.name }), x.note ? el('div', { class: 'note warn', text: x.note }) : null]),
+      tag,
+    ]));
+  });
+  const fee = Number(it.fee) || 0;
+  const n = pv.results.filter((x) => x.status === '已報名').length;
+  if (fee && n) list.appendChild(el('div', { class: 'plan' }, [el('div', { class: 'note', text: '應繳（' + n + ' 人）' }), el('div', { class: 'sum', text: money(fee * n) })]));
+  const btn = $('btnConfirm');
+  btn.disabled = !go.length;
+  btn.textContent = go.length ? '確認送出（' + go.length + ' 人）' : '沒有可報名的人';
+  btn.onclick = async () => {
+    const r = await send(btn, payload, '送出中…');
+    if (!r.ok) return signupFail(r, it);
+    signupDone(it, court, r.data);
+  };
+  $('btnConfirmBack').onclick = () => { show('viewSignup', signupState.tab === 'class' ? '報名課程' : '報名球敘'); };
+  show('viewConfirm', '確認報名');
+}
+
+function signupDone(it, court, d) {
   // v3.3：報名頁直接標成已報名／候補，我的報名用回傳的最新資料（回到這兩頁都不必再讀）
-  it.mine = d.status;
-  if (court) it.mineCourt = court.id;
+  const results = d.results || [{ id: myId(), self: true, status: d.status, rank: d.rank, amount: d.amount, kind: d.kind, credit: d.credit, deadline: d.deadline }];
+  results.filter((x) => x.status).forEach((x) => {
+    if (it.mineBy) it.mineBy[x.id] = { status: x.status, courtId: court ? court.id : '' };
+    if (x.self || x.id === myId()) {
+      it.mine = x.status;
+      if (court) it.mineCourt = court.id;
+    }
+  });
   if (signupState.data) saveOptionsCache(signupState.data);
   if (d.my) savePage('my', d.my);
   const myBtn = { label: '查看我的報名', fn: () => route('my') };
-  if (d.status !== '已報名') {
-    return showDone('已加入候補', '目前候補第 ' + d.rank + ' 位。' + (it.kind === '球敘' ? '有人取消時會自動遞補，並在 LINE 通知你（遞補後需在期限內付款）。' : '候補中，暫不需付款，遞補時會通知您。'),
-      { icon: '⏳', wait: true, next: myBtn, friendText: '遞補成功時要在期限內付款，通知只會用 LINE 傳送。沒加入官方帳號會收不到，名額可能直接給下一位。' });
+  const done = results.filter((x) => x.status);
+  const share = { kind: it.kind, id: it.id, title: it.title, when: it.timeLabel || it.when, venue: it.venue };
+  if (done.length === 1 && results.length === 1) {
+    const x = done[0];
+    const who = x.self ? '' : '【' + x.name + '】';
+    if (x.status !== '已報名') {
+      return showDone('已加入候補', who + '目前候補第 ' + x.rank + ' 位。' + (it.kind === '球敘' ? '有人取消時會自動遞補，並在 LINE 通知你（遞補後需在期限內付款）。' : '候補中，暫不需付款，遞補時會通知您。'),
+        { icon: '⏳', wait: true, next: myBtn, share: share, friendText: '遞補成功時要在期限內付款，通知只會用 LINE 傳送。沒加入官方帳號會收不到，名額可能直接給下一位。' });
+    }
+    const lines = [who + it.title, it.timeLabel || it.when];
+    if (court) lines.push('球面：' + court.name);
+    if (x.credit) lines.push('已用先前已付款項折抵 ' + money(x.credit));
+    if (x.amount > 0) {
+      lines.push('');
+      lines.push((x.kind === '首堂' ? '首堂費用 ' : '應繳 ') + money(x.amount) + (x.deadline ? '，請於 ' + x.deadline + ' 前完成付款，逾期名額會自動釋出。' : '。'));
+      if (app.init.paymentInfo) lines.push(app.init.paymentInfo);
+      if (x.kind === '首堂') lines.push('成班後會再通知開課日期與尾款。');
+    }
+    const friendText = it.kind === '球敘'
+      ? '付款期限、候補遞補與開打前提醒都用 LINE 通知，加入官方帳號才收得到。'
+      : '開班確認、開課日期與尾款通知都用 LINE 傳送，加入官方帳號才收得到。';
+    return showDone('報名成功', lines.join('\n'), { next: myBtn, share: share, friendText: friendText });
   }
-  const lines = [it.title, it.timeLabel || it.when];
-  if (court) lines.push('球面：' + court.name);
-  if (d.credit) lines.push('已用先前已付款項折抵 ' + money(d.credit));
-  if (d.amount > 0) {
+  // 多人：逐人列出結果與合計
+  const lines = [it.title, (it.timeLabel || it.when) + (court ? '　' + court.name : ''), ''];
+  let total = 0;
+  let deadline = '';
+  results.forEach((x) => {
+    const name = x.self ? '我' : x.name;
+    if (x.status === '已報名') {
+      total += x.amount || 0;
+      deadline = deadline || x.deadline;
+      lines.push('✓ ' + name + '：已報名' + (x.amount ? '（' + money(x.amount) + '）' : ''));
+    } else if (x.status === '候補') lines.push('⏳ ' + name + '：候補第 ' + x.rank + ' 位');
+    else lines.push('－ ' + name + '：未報名（' + x.note + '）');
+  });
+  if (total > 0) {
     lines.push('');
-    lines.push((d.kind === '首堂' ? '首堂費用 ' : '應繳 ') + money(d.amount) + (d.deadline ? '，請於 ' + d.deadline + ' 前完成付款，逾期名額會自動釋出。' : '。'));
+    lines.push('合計應繳 ' + money(total) + (deadline ? '，請於 ' + deadline + ' 前完成付款，逾期名額會自動釋出。' : '。'));
     if (app.init.paymentInfo) lines.push(app.init.paymentInfo);
-    if (d.kind === '首堂') lines.push('成班後會再通知開課日期與尾款。');
   }
-  const friendText = it.kind === '球敘'
-    ? '付款期限、候補遞補與開打前提醒都用 LINE 通知，加入官方帳號才收得到。'
-    : '開班確認、開課日期與尾款通知都用 LINE 傳送，加入官方帳號才收得到。';
-  showDone('報名成功', lines.join('\n'), { next: myBtn, friendText: friendText });
+  const allWait = done.every((x) => x.status !== '已報名');
+  showDone(allWait ? '已加入候補' : '報名完成', lines.join('\n'), { icon: allWait ? '⏳' : '✓', wait: allWait, next: myBtn, share: share,
+    friendText: '付款期限、候補遞補與提醒都用 LINE 通知（家人的通知也會傳給你），加入官方帳號才收得到。' });
 }
 
 $('tabClass').addEventListener('click', () => { signupState.tab = 'class'; signupState.venue = ''; signupState.time = ''; signupState.only = ''; renderSignup(); });
@@ -972,23 +1437,66 @@ async function openMy(force) {
   return pageLoad('my', { action: 'myList' }, renderMy, 'viewMy', { force: force });
 }
 
+const myState = { filter: 'all' }; // v3.7：all／學員ID
+
 function renderMy(d, stale) {
   banner('myBanner', '');
   const list = $('myList');
   list.innerHTML = '';
-  const owe = d.items.some((it) => it.status === '已報名' && it.due > it.paid);
-  const pi = $('myPayInfo');
-  pi.textContent = owe && d.paymentInfo ? '付款方式\n' + d.paymentInfo : '';
-  pi.classList.toggle('hidden', !(owe && d.paymentInfo));
-  if (!d.items.length) {
-    list.appendChild(el('div', { class: 'empty', text: '目前沒有進行中的報名' }));
-    list.appendChild(el('button', { class: 'ghost', type: 'button', style: 'margin-top:12px', text: '去報名', onclick: () => route('signup') }));
+  // v3.7：有家人時依成員篩選；待付合計加總自己與家人
+  const fam = d.family || [];
+  if (Array.isArray(d.family) && app.init && familyOn()) setFamilyQuiet(d.family);
+  const fbar = $('myFilter');
+  fbar.innerHTML = '';
+  fbar.classList.toggle('hidden', !fam.length);
+  if (!fam.length) myState.filter = 'all';
+  if (myState.filter !== 'all' && myState.filter !== myId() && !fam.some((f) => f.id === myState.filter)) myState.filter = 'all';
+  if (fam.length) {
+    [{ id: 'all', name: '全部' }, { id: myId(), name: '我' }].concat(fam).forEach((p) => fbar.appendChild(el('button', {
+      type: 'button', class: 'chip' + (myState.filter === p.id ? ' on' : ''), text: p.name, onclick: () => { myState.filter = p.id; renderMy(d, stale); },
+    })));
   }
-  d.items.forEach((it) => list.appendChild(myCard(it)));
-  renderMyLessons(d.lessons);
+  const whoId = (it) => (it.who && it.who.id) || myId();
+  const shown = myState.filter === 'all' ? d.items : d.items.filter((it) => whoId(it) === myState.filter);
+  const oweOf = (it) => (it.status === '已報名' && it.due > it.paid ? it.due - it.paid : 0);
+  const owe = d.items.some((it) => oweOf(it) > 0);
+  const total = d.items.reduce((a, it) => a + oweOf(it), 0);
+  const pi = $('myPayInfo');
+  const payLines = [];
+  if (fam.length && total > 0) payLines.push('待付合計 ' + money(total) + (d.items.some((it) => oweOf(it) > 0 && it.who && !it.who.self) ? '（含家人）' : ''));
+  if (owe && d.paymentInfo) payLines.push('付款方式\n' + d.paymentInfo);
+  pi.textContent = payLines.join('\n\n');
+  pi.className = 'banner' + (fam.length && total > 0 ? ' warn' : '');
+  pi.classList.toggle('hidden', !payLines.length);
+  if (!shown.length) {
+    list.appendChild(el('div', { class: 'empty', text: myState.filter === 'all' ? '目前沒有進行中的報名' : personName(myState.filter) + '目前沒有進行中的報名' }));
+    list.appendChild(el('button', { class: 'ghost', type: 'button', style: 'margin-top:12px', text: '去報名', onclick: () => {
+      if (myState.filter !== 'all') signupState.who = [myState.filter];
+      route('signup');
+    } }));
+  }
+  shown.forEach((it) => list.appendChild(myCard(it)));
+  if (d.lessonsBy && d.lessonsBy.length) renderMyLessonsBy(d.lessonsBy.filter((x) => myState.filter === 'all' || x.id === myState.filter));
+  else renderMyLessons(d.lessons);
+  $('myProfileLink').textContent = familyOn() ? '基本資料／我的家人' : '修改基本資料';
   $('friendStrip').classList.toggle('hidden', app.friend !== false);
   setViewStale('viewMy', stale);
   show('viewMy', '我的報名');
+}
+
+/** v3.7：家人清單只更新，不清快取（我的報名回傳時用） */
+function setFamilyQuiet(list) {
+  if (Array.isArray(list) && app.init) app.init.family = list;
+}
+
+/** v3.7：剩餘堂數、待補課逐人顯示 */
+function renderMyLessonsBy(arr) {
+  const box = $('myLessons');
+  box.innerHTML = '';
+  const has = (info) => !!info && (info.hasLessons || (info.makeups && info.makeups.length));
+  const list = arr.filter((x) => has(x.info));
+  box.classList.toggle('hidden', !list.length);
+  list.forEach((x) => lessonsCard(box, x.info, x.self ? '我的堂數' : x.name + ' 的堂數'));
 }
 
 // v3.4（#88）：剩餘堂數、待補課（補課期限）
@@ -998,7 +1506,11 @@ function renderMyLessons(info) {
   const show = !!info && (info.hasLessons || (info.makeups && info.makeups.length));
   box.classList.toggle('hidden', !show);
   if (!show) return;
-  const head = el('div', { class: 't', text: '我的堂數' }, [
+  lessonsCard(box, info, '我的堂數');
+}
+
+function lessonsCard(box, info, title) {
+  const head = el('div', { class: 't', text: title }, [
     el('span', { class: 'badge' + (info.lessons <= 1 ? ' warn' : ''), text: '剩餘 ' + info.lessons + ' 堂' }),
   ]);
   const rows = [head];
@@ -1039,6 +1551,10 @@ function myCard(it) {
   if (it.type === '球敘' && it.status === '已報名') {
     actions.push(el('button', { class: 'act alt', type: 'button', text: '成員／輪轉／積分', onclick: () => openGathering(it.id) }));
   }
+  // v3.7：分享報名連結（已開課的課程朋友報不了，不顯示）
+  const today = new Date().toLocaleDateString('sv-SE');
+  const canShare = it.status !== '保留中' && it.id && (it.type === '球敘' || it.classStatus === '籌備中' || (it.startDate && it.startDate > today));
+  if (canShare) actions.push(shareButton(it));
   if (it.status === '保留中') {
     actions.push(el('button', { class: 'act', type: 'button', text: it.choice ? '變更處理方式' : '選擇處理方式', onclick: () => openUnformed(it.signupId) }));
   } else if (it.canCancel) {
@@ -1054,7 +1570,7 @@ function myCard(it) {
   if (it.status === '保留中') extra = el('div', { class: 'note', style: 'margin-top:4px', text: '這一期未成班。' + (it.choice === '順延' ? '目前選擇：順延（同據點下一期開班時通知你）' : it.choice ? '目前選擇：' + it.choice : '尚未選擇（預設順延）') });
   if (it.classStatus === '籌備中' && it.status === '已報名') extra = el('div', { class: 'note', style: 'margin-top:4px', text: '滿 ' + it.minSize + ' 人（已付首堂）成班，成班確認後通知開課日期與尾款。' });
   return el('div', { class: 'item' }, [
-    el('div', { class: 't', text: it.title }, [statusBadge(it)]),
+    el('div', { class: 't' }, [whoTag(it.who), el('span', { text: it.title }), statusBadge(it)]),
     el('div', { class: 's', text: it.when }),
     el('div', { class: 'm', text: meta }),
     extra,
@@ -1068,7 +1584,7 @@ async function doCancel(btn, it) {
   if (!r.ok) return banner('myBanner', r.message, true);
   app.optAt = 0; // 報名頁的名額下次背景更新
   if (r.data.my) { savePage('my', r.data.my); renderMy(r.data.my, false); } else await openMy(true);
-  banner('myBanner', '已取消：' + it.title);
+  banner('myBanner', '已取消：' + (it.who && !it.who.self ? '【' + it.who.name + '】' : '') + it.title);
 }
 
 // ================================================================
@@ -1192,7 +1708,8 @@ async function openUnformed(signupId) {
     show('viewUnformed', '未成班處理');
     return;
   }
-  banner('ufBanner', d.title + ' 這一期人數不足、未能開班，很抱歉！\n你已付 ' + money(d.paid) + '，請選擇處理方式（未選擇時預設順延）。');
+  const who = d.who ? '【' + d.who + '】' : ''; // v3.7：家長替家人選擇
+  banner('ufBanner', who + d.title + ' 這一期人數不足、未能開班，很抱歉！\n' + (d.who ? '已付 ' : '你已付 ') + money(d.paid) + '，請選擇處理方式（未選擇時預設順延）。');
 
   const keep = el('div', { class: 'opt' + (d.choice === '順延' ? ' on' : '') }, [
     el('h3', { text: '順延' + (d.choice === '順延' ? '（目前選擇）' : '') }),
@@ -1250,8 +1767,16 @@ async function chooseUnformed(btn, choice, cls) {
 // ================================================================
 // v3：現場簽到（據點 QR：?page=checkin&venue=據點ID&src=qr）
 // ================================================================
-/** 取得定位：成功 { lat, lng, acc }；失敗 { error } */
+/** 取得定位：成功 { lat, lng, acc }；失敗 { error }。v3.7.1：2 分鐘內再簽到（勾選家人、選場次）沿用上次定位 */
+const LOC_REUSE_MS = 120000;
 function getLocation() {
+  if (app.lastLoc && Date.now() - app.lastLoc.at < LOC_REUSE_MS) return Promise.resolve(app.lastLoc.loc);
+  return getLocationRaw().then((loc) => {
+    if (!loc.error) app.lastLoc = { at: Date.now(), loc: loc };
+    return loc;
+  });
+}
+function getLocationRaw() {
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve({ error: 'UNSUPPORTED' });
     navigator.geolocation.getCurrentPosition(
@@ -1262,8 +1787,9 @@ function getLocation() {
   });
 }
 
-async function openCheckin(venueId, gatherId) {
+async function openCheckin(venueId, gatherId, forIds) {
   if (!venueId) return showError('簽到 QR Code 缺少據點資訊，請洽場主。', 'NO_VENUE');
+  if (forIds) app.ciFor = forIds; // v3.7：家長勾選的簽到對象（選球敘場次時沿用）
   const pre = !gatherId ? takePrePage('checkin') : null; // v3.3：init 已一併簽到
   if (pre) {
     app.geoP = null;
@@ -1280,7 +1806,7 @@ async function openCheckin(venueId, gatherId) {
     ? '簽到需要確認你在現場，請允許 LINE 使用定位。\n（iPhone：設定 → 隱私權與安全性 → 定位服務 → LINE → 使用 App 期間）'
     : '目前無法取得定位，請確認手機已開啟定位後再試一次。', venueId);
   let r;
-  try { r = await callGas({ action: 'checkin', venue: venueId, lat: loc.lat, lng: loc.lng, acc: loc.acc, gatherId: gatherId || '', src: app.src || 'qr' }); }
+  try { r = await callGas({ action: 'checkin', venue: venueId, lat: loc.lat, lng: loc.lng, acc: loc.acc, gatherId: gatherId || '', src: app.src || 'qr', forIds: app.ciFor || [] }); }
   catch (e) { return checkinProblem('連線不穩定，請再試一次。', venueId); }
   if (!r.ok) {
     if (r.error === 'NO_SESSION' || r.error === 'NOT_FOUND') { banner('ciBanner', r.message, true); $('ciBody').innerHTML = ''; return show('viewCheckin', '現場簽到'); }
@@ -1293,7 +1819,7 @@ function checkinProblem(msg, venueId) {
   banner('ciBanner', msg, true);
   const body = $('ciBody');
   body.innerHTML = '';
-  body.appendChild(el('button', { class: 'primary', type: 'button', text: '重新簽到', onclick: () => openCheckin(venueId) }));
+  body.appendChild(el('button', { class: 'primary', type: 'button', text: '重新簽到', onclick: () => { app.lastLoc = null; openCheckin(venueId); } })); // 重新定位（可能剛走近）
   body.appendChild(el('div', { class: 'note', style: 'text-align:center;margin-top:12px', text: '仍然不行的話，請找場主或教練幫你點名。' }));
   show('viewCheckin', '現場簽到');
 }
@@ -1310,11 +1836,34 @@ function renderCheckin(r, venueId) {
   const body = $('ciBody');
   body.innerHTML = '';
   banner('ciBanner', '');
+  // v3.7：家人今天在這裡有報名 → 勾選要一起簽到的人
+  if (r.people && r.people.length) {
+    banner('ciBanner', r.venue + '：要幫誰簽到？（可複選）');
+    const boxes = [];
+    r.people.forEach((p) => {
+      const cb = el('input', { type: 'checkbox', value: p.id });
+      cb.checked = p.has;
+      boxes.push(cb);
+      body.appendChild(el('label', { class: 'item consent', style: 'display:flex' }, [cb, el('span', {}, [
+        el('div', { style: 'font-weight:700;color:var(--green-dark)', text: p.self ? '我' : p.name }),
+        el('div', { class: 'note', text: p.has ? p.items.join('、') : '沒有報名（勾選可送出現場報名球敘，由場主確認）' }),
+      ])]));
+    });
+    const go = el('button', { class: 'primary', type: 'button', text: '簽到' });
+    go.addEventListener('click', () => {
+      const ids = boxes.filter((b) => b.checked).map((b) => b.value);
+      if (!ids.length) return banner('ciBanner', '請至少勾選一位', true);
+      openCheckin(venueId, '', ids);
+    });
+    body.appendChild(go);
+    show('viewCheckin', '現場簽到');
+    return;
+  }
   if (r.choices && r.choices.length) {
     banner('ciBanner', r.venue + ' 現在有 ' + r.choices.length + ' 場球敘，你要參加哪一場？送出後由場主確認。');
     r.choices.forEach((c) => {
       const b = el('button', { class: 'act', type: 'button', text: '選這場' });
-      b.addEventListener('click', () => openCheckin(venueId, c.id));
+      b.addEventListener('click', () => openCheckin(venueId, c.id, app.ciFor));
       body.appendChild(el('div', { class: 'item' }, [
         el('div', { class: 't', text: c.title }, [el('span', { class: 'badge', text: c.typeLabel })]),
         el('div', { class: 's', text: c.when }),
@@ -1330,11 +1879,11 @@ function renderCheckin(r, venueId) {
     if (x.status === 'checked' || x.status === 'already') note = x.kind === '球敘' ? (x.court ? '球面：' + x.court + '。' : '') + '輪轉表與比分可在「今日球敘」查看。' : '教練會在課後確認出席並扣堂。';
     if (x.status === 'walkin') note = '你沒有報名這場，已送出現場報名，請等場主確認並收費。' + (x.note ? '\n' + x.note : '');
     if (x.status === 'waitlist') note = '你在候補名單上，請找場主確認是否有位置。';
-    if (x.status === 'leave') note = '這一堂你已請假，系統已記錄你到場，請告知教練。';
+    if (x.status === 'leave') note = '這一堂' + (x.who ? x.who : '你') + '已請假，系統已記錄到場，請告知教練。';
     const actions = x.kind === '球敘' && (x.status === 'checked' || x.status === 'already')
       ? el('button', { class: 'act alt', type: 'button', text: '今日球敘', onclick: () => openGathering(x.gatherId) }) : null;
     body.appendChild(el('div', { class: 'item' }, [
-      el('div', { class: 't', text: x.title }, [el('span', { class: 'badge' + (tone ? ' wait' : ''), text: label })]),
+      el('div', { class: 't' }, [x.who ? el('span', { class: 'tagname', text: x.who }) : null, el('span', { text: x.title }), el('span', { class: 'badge' + (tone ? ' wait' : ''), text: label })]),
       el('div', { class: 's', text: x.kind + '・' + x.when }),
       note ? el('div', { class: 'note', style: 'margin-top:6px;white-space:pre-line', text: note }) : null,
       actions ? el('div', { class: 'foot' }, [el('span'), actions]) : null,
@@ -1359,15 +1908,29 @@ async function openLeave(force) {
   return pageLoad('leave', { action: 'leaveList' }, renderLeave, 'viewLeave', { force: force });
 }
 
+const leaveState = { filter: 'all' }; // v3.7：先選家人，再選堂次
+
 function renderLeave(d, stale) {
   setViewStale('viewLeave', stale);
   banner('leaveBanner', '請在上課前 ' + d.noticeHours + ' 小時以前請假；之後才請假屬於逾時請假，依課程規定處理。');
   const list = $('leaveList');
   list.innerHTML = '';
-  const gs = d.gatherings || [];
+  const fam = d.family || [];
+  const fbar = $('leaveFilter');
+  fbar.innerHTML = '';
+  fbar.classList.toggle('hidden', !fam.length);
+  if (!fam.length || (leaveState.filter !== 'all' && leaveState.filter !== myId() && !fam.some((f) => f.id === leaveState.filter))) leaveState.filter = 'all';
+  if (fam.length) {
+    [{ id: 'all', name: '全部' }, { id: myId(), name: '我' }].concat(fam).forEach((p) => fbar.appendChild(el('button', {
+      type: 'button', class: 'chip' + (leaveState.filter === p.id ? ' on' : ''), text: p.name, onclick: () => { leaveState.filter = p.id; renderLeave(d, stale); },
+    })));
+  }
+  const pick = (arr) => (leaveState.filter === 'all' ? arr : arr.filter((it) => ((it.who && it.who.id) || myId()) === leaveState.filter));
+  const items = pick(d.items);
+  const gs = pick(d.gatherings || []);
   if (gs.length) list.appendChild(el('h2', { class: 'sec', text: '課程' }));
-  if (!d.items.length) list.appendChild(el('div', { class: 'empty', text: '近期沒有可請假的課程' }));
-  d.items.forEach((it) => list.appendChild(leaveCard(it, d.noticeHours)));
+  if (!items.length) list.appendChild(el('div', { class: 'empty', text: '近期沒有可請假的課程' }));
+  items.forEach((it) => list.appendChild(leaveCard(it, d.noticeHours)));
   // v3.3：球敘不用請假，取消報名即可（名額會釋出給候補）
   if (gs.length) {
     list.appendChild(el('h2', { class: 'sec', text: '球敘' }));
@@ -1386,7 +1949,7 @@ function leaveGatherCard(it) {
     right = el('span', { class: 'note', text: it.cancelNote || '請點選單「聯絡我們」' });
   }
   return el('div', { class: 'item' }, [
-    el('div', { class: 't', text: it.when }, [it.status === '候補' ? el('span', { class: 'badge wait', text: '候補中' }) : null]),
+    el('div', { class: 't' }, [whoTag(it.who), el('span', { text: it.when }), it.status === '候補' ? el('span', { class: 'badge wait', text: '候補中' }) : null]),
     el('div', { class: 's', text: it.title }),
     el('div', { class: 'm', text: [it.venue, it.courtName].filter(Boolean).join('・') }),
     el('div', { class: 'foot' }, [el('span'), right]),
@@ -1423,7 +1986,7 @@ function leaveCard(it, hours) {
     if (it.late) note = el('div', { class: 'note warn', text: '距離上課不到 ' + hours + ' 小時，屬於逾時請假' });
   }
   return el('div', { class: 'item' }, [
-    el('div', { class: 't', text: it.when }, [it.leaveId ? el('span', { class: 'badge warn', text: '已請假' }) : null]),
+    el('div', { class: 't' }, [whoTag(it.who), el('span', { text: it.when }), it.leaveId ? el('span', { class: 'badge warn', text: '已請假' }) : null]),
     el('div', { class: 's', text: it.title }),
     el('div', { class: 'm', text: [it.venue, it.lesson ? '第 ' + it.lesson + ' 堂' : ''].filter(Boolean).join('・') }),
     note,
@@ -1433,10 +1996,11 @@ function leaveCard(it, hours) {
 
 async function doLeave(btn, it) {
   if (!armed(btn, '確定請假？')) return;
-  const r = await send(btn, { action: 'leave', submissionId: newId(), sessionId: it.sessionId }, '送出中…');
+  const forId = it.who && !it.who.self ? it.who.id : ''; // v3.7：替家人請假
+  const r = await send(btn, { action: 'leave', submissionId: newId(), sessionId: it.sessionId, forId: forId }, '送出中…');
   if (!r.ok) return banner('leaveBanner', r.message, true);
   if (r.data.leave) { savePage('leave', r.data.leave); renderLeave(r.data.leave, false); } else await openLeave(true);
-  banner('leaveBanner', '已請假：' + it.when + (r.data.late ? '（逾時請假）' : ''), r.data.late);
+  banner('leaveBanner', '已請假：' + (forId ? '【' + it.who.name + '】' : '') + it.when + (r.data.late ? '（逾時請假）' : ''), r.data.late);
 }
 
 async function doLeaveCancel(btn, it) {
