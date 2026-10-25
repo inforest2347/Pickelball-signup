@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
@@ -7,6 +7,8 @@
 <!-- 學員官方帳號 LIFF　v3（2026/10/11）：v2 ＋ 免加好友報名、深層連結（type／id／src）、加好友邀請、電話只在課程時要求 -->
 <!-- v3.2（2026/10/19）：籌備中課程不顯示日期、課程候補「暫不需付款」、未成班三選項 順延／轉班／退款（須搭配 GAS v3.2） -->
 <!-- v3.3（2026/10/19）：開頁只要 1 個請求（init 一併回傳頁面資料）、各頁先顯示手機上次的資料、操作後不再重讀（須搭配 GAS v3.3） -->
+<!-- v3.8（2026/10/25）：基本資料頁「我的家人」移到儲存按鈕前；選單「請假」改為「我的課程」（課表、每堂狀態、剩餘堂數）；我的報名的課程卡片與我的課程課表都能請假；
+     舊連結 ?page=leave 改開我的報名（須搭配 GAS v3.8） -->
 <!-- v3.7.2（2026/10/23）：選單新增「我的資料」入口；我的報名頁底的文字連結改為按鈕
      報名改為確認畫面（不再 3 秒內按兩下）；課程缺手機時在確認畫面填，和報名同一個請求送出（須搭配 GAS v3.7.2） -->
 <!-- v3.7.1（2026/10/21）：多人報名的確認畫面在手機上算（不多一個請求）、簽到 2 分鐘內沿用定位（須搭配 GAS v3.7.1） -->
@@ -135,6 +137,16 @@
   .stale .stale-note { display: block; }
   .stale-note.err { color: var(--warn); }
   h2.sec { font-size: 15px; color: var(--green-dark); margin: 16px 2px 8px; }
+  /* v3.8：課程卡片內的堂次（我的報名：請假；我的課程：課表） */
+  .sess { margin-top: 10px; border-top: 1px solid #edf1ef; }
+  .sess .sh { font-size: 12px; color: var(--muted); font-weight: 600; margin: 8px 0 2px; }
+  .srow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px dashed #edf1ef; font-size: 14px; }
+  .srow:first-of-type { border-top: 0; }
+  .srow .sw { font-variant-numeric: tabular-nums; }
+  .srow .sl { font-size: 12px; color: var(--muted); }
+  .srow.past { color: var(--muted); }
+  .srow.next { background: var(--green-light); margin: 0 -8px; padding: 8px; border-radius: 8px; border-top-color: transparent; }
+  .more { border: 0; background: none; color: var(--green-dark); font-size: 13px; font-weight: 600; padding: 6px 0 0; }
   /* v3：加好友邀請 */
   .friend { background: #fff; border: 2px solid #06c755; border-radius: var(--radius); padding: 14px; margin: 18px auto 0; max-width: 360px; text-align: left; }
   .friend .ft { font-weight: 700; color: #0b7a3b; font-size: 15px; margin-bottom: 4px; }
@@ -265,14 +277,14 @@
     </div>
     <div class="hint">報名「DUPR 球敘」時需要雙打分數。目前為自評，不會上傳到 DUPR。</div>
   </div>
-  <button class="primary" id="btnProfile" type="button">儲存</button>
-  <!-- v3.7：我的家人 -->
-  <div class="card hidden" id="p_familyCard" style="margin-top:18px">
+  <!-- v3.7：我的家人（v3.8：移到儲存按鈕前；新增／移除家人各自儲存，不受下方「儲存」影響） -->
+  <div class="card hidden" id="p_familyCard">
     <h2>我的家人</h2>
     <div class="note" style="margin:-4px 0 8px">可以替孩子或沒有 LINE 的家人報名、請假與簽到；費用與通知由你處理。</div>
     <div id="p_family"></div>
     <button class="ghost" type="button" id="btnAddFamily" style="margin-top:8px">＋ 新增家人</button>
   </div>
+  <button class="primary" id="btnProfile" type="button">儲存</button>
 </main>
 
 <!-- ============ v3.7：新增／編輯家人 ============ -->
@@ -356,7 +368,6 @@
   <div id="myBanner" class="banner hidden"></div>
   <div class="chips filter hidden" id="myFilter"></div>
   <div id="myPayInfo" class="banner hidden"></div>
-  <div id="myLessons" class="hidden"></div>
   <div id="myList"></div>
   <button class="ghost" type="button" id="myProfileLink" style="margin-top:18px" onclick="openProfile('my')">修改基本資料</button>
 </main>
@@ -392,12 +403,13 @@
   <div id="ciBody"></div>
 </main>
 
-<!-- ============ 請假 ============ -->
-<main id="viewLeave" class="hidden">
+<!-- ============ v3.8：我的課程（課表、剩餘堂數） ============ -->
+<main id="viewCourses" class="hidden">
   <div class="stale-note">顯示上次的資料，更新中…</div>
-  <div class="banner" id="leaveBanner"></div>
-  <div class="chips filter hidden" id="leaveFilter"></div>
-  <div id="leaveList"></div>
+  <div id="crsBanner" class="banner hidden"></div>
+  <div class="chips filter hidden" id="crsFilter"></div>
+  <div id="crsLessons"></div>
+  <div id="crsList"></div>
 </main>
 
 <div id="toast" class="hidden"></div>
@@ -417,13 +429,13 @@
 const LIFF_ID = '2011932114-Fh1txi0y';          // 例：2001234567-AbCdEfGh
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzEMw17w0AZ_-E_MrQq2kBamkGTpCVNa7VGEA8-R-IYCP4x-9Hf4L9w8WRdvRH2iz-a/exec';  // https://script.google.com/macros/s/…/exec
 const SHOW_ERROR_CODE = false;                    // 測試期間顯示錯誤代碼；上線後改為 false
-const OA_BASIC_ID = '@251nkmih';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
+const OA_BASIC_ID = '@xxxxxxx';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
 
 // ================================================================
 // 共用
 // ================================================================
 const $ = (id) => document.getElementById(id);
-const VIEWS = ['viewLoading', 'viewError', 'viewDone', 'viewWelcome', 'viewProfile', 'viewSignup', 'viewMy', 'viewGathering', 'viewUnformed', 'viewLeave', 'viewCheckin', 'viewFamily', 'viewConfirm'];
+const VIEWS = ['viewLoading', 'viewError', 'viewDone', 'viewWelcome', 'viewProfile', 'viewSignup', 'viewMy', 'viewGathering', 'viewUnformed', 'viewCourses', 'viewCheckin', 'viewFamily', 'viewConfirm'];
 const app = { idToken: '', params: {}, init: null, src: '', friend: null, view: '', mem: {}, prePage: null, optAt: 0 };
 
 function show(view, title) {
@@ -557,7 +569,12 @@ async function pageLoad(k, payload, render, viewId, opts) {
   opts = opts || {};
   const pre = takePrePage(k);
   if (pre) {
-    if (pre.ok === false) return pageFail(pre);
+    if (pre.ok === false) {
+      // v3.8：init 帶回的頁面資料出錯 → 有上次的資料就先顯示（標示無法更新），沒有才顯示錯誤頁
+      const old = pre.error !== 'NEED_PROFILE' && readPage(k);
+      if (old) { render(old.data, true); return setViewStale(viewId, true, true); }
+      return pageFail(pre);
+    }
     savePage(k, pre);
     return render(pre, false);
   }
@@ -847,7 +864,7 @@ function openFamilyForm(member, back, opts) {
   const isNew = !member;
   const m = member || {};
   if (isNew && family().length >= (app.init.familyMax || 5)) {
-    return showDone('家人已達上限', '每位最多建立 ' + (app.init.familyMax || 5) + ' 位家人，需要更多請點「聯絡我們」。', { icon: '!', wait: true });
+    return showDone('家人已達上限', '每位最多建立 ' + (app.init.familyMax || 5) + ' 位家人，需要更多請點「聯絡客服」。', { icon: '!', wait: true });
   }
   document.querySelectorAll('#viewFamily [data-field]').forEach((x) => x.classList.remove('invalid'));
   const rels = app.init.relations || ['子女', '其他家人'];
@@ -1543,9 +1560,7 @@ function renderMy(d, stale) {
       route('signup');
     } }));
   }
-  shown.forEach((it) => list.appendChild(myCard(it)));
-  if (d.lessonsBy && d.lessonsBy.length) renderMyLessonsBy(d.lessonsBy.filter((x) => myState.filter === 'all' || x.id === myState.filter));
-  else renderMyLessons(d.lessons);
+  shown.forEach((it) => list.appendChild(myCard(it, d.noticeHours || 24)));
   $('myProfileLink').textContent = familyOn() ? '基本資料／我的家人' : '修改基本資料';
   $('friendStrip').classList.toggle('hidden', app.friend !== false);
   setViewStale('viewMy', stale);
@@ -1557,24 +1572,13 @@ function setFamilyQuiet(list) {
   if (Array.isArray(list) && app.init) app.init.family = list;
 }
 
-/** v3.7：剩餘堂數、待補課逐人顯示 */
-function renderMyLessonsBy(arr) {
-  const box = $('myLessons');
+/** v3.8：剩餘堂數、待補課逐人顯示（我的課程頁） */
+function renderLessonsBy(box, arr) {
   box.innerHTML = '';
   const has = (info) => !!info && (info.hasLessons || (info.makeups && info.makeups.length));
   const list = arr.filter((x) => has(x.info));
-  box.classList.toggle('hidden', !list.length);
-  list.forEach((x) => lessonsCard(box, x.info, x.self ? '我的堂數' : x.name + ' 的堂數'));
-}
-
-// v3.4（#88）：剩餘堂數、待補課（補課期限）
-function renderMyLessons(info) {
-  const box = $('myLessons');
-  box.innerHTML = '';
-  const show = !!info && (info.hasLessons || (info.makeups && info.makeups.length));
-  box.classList.toggle('hidden', !show);
-  if (!show) return;
-  lessonsCard(box, info, '我的堂數');
+  const many = arr.length > 1;
+  list.forEach((x) => lessonsCard(box, x.info, !many || x.self ? '我的堂數' : x.name + ' 的堂數'));
 }
 
 function lessonsCard(box, info, title) {
@@ -1582,7 +1586,7 @@ function lessonsCard(box, info, title) {
     el('span', { class: 'badge' + (info.lessons <= 1 ? ' warn' : ''), text: '剩餘 ' + info.lessons + ' 堂' }),
   ]);
   const rows = [head];
-  if (info.lessons <= 1 && info.hasLessons) rows.push(el('div', { class: 'note warn', style: 'margin-top:4px', text: '堂數快用完了，想續課請點「聯絡我們」。' }));
+  if (info.lessons <= 1 && info.hasLessons) rows.push(el('div', { class: 'note warn', style: 'margin-top:4px', text: '堂數快用完了，想續課請點「聯絡客服」。' }));
   if (info.makeups && info.makeups.length) {
     rows.push(el('div', { class: 's', style: 'margin-top:8px', text: '待補課 ' + info.makeups.length + ' 堂（請假未補）' }));
     info.makeups.forEach((m) => {
@@ -1591,7 +1595,7 @@ function lessonsCard(box, info, title) {
         el('div', { class: 'note' + (m.soon ? ' warn' : ''), text: '補課期限 ' + m.deadline + (m.daysLeft <= 0 ? '（今天到期）' : '（剩 ' + m.daysLeft + ' 天）') }),
       ]));
     });
-    rows.push(el('div', { class: 'note', style: 'margin-top:6px', text: '要安排補課請點「聯絡我們」，客服會幫你找時間。' }));
+    rows.push(el('div', { class: 'note', style: 'margin-top:6px', text: '要安排補課請點「聯絡客服」，客服會幫你找時間。' }));
   }
   box.appendChild(el('div', { class: 'item' }, rows));
 }
@@ -1603,7 +1607,7 @@ function statusBadge(it) {
   return el('span', { class: 'badge', text: '已報名' });
 }
 
-function myCard(it) {
+function myCard(it, hours) {
   let payText = '';
   let payWarn = false;
   if (it.status === '已報名') {
@@ -1642,7 +1646,181 @@ function myCard(it) {
     el('div', { class: 's', text: it.when }),
     el('div', { class: 'm', text: meta }),
     extra,
+    it.sessions ? leaveBlock(it, hours) : null,
     el('div', { class: 'foot' }, [el('span', { class: 'seat' + (payWarn ? ' full' : ''), text: payText }), el('span', { style: 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end' }, actions)]),
+  ]);
+}
+
+// ================================================================
+// v3.8：請假（併入我的報名的課程卡片）
+// ================================================================
+const LEAVE_SHOW = 3;            // 每張卡片先列出最近幾堂
+const leaveOpen = {};            // 展開全部的卡片（報名ID）
+
+function leaveBlock(it, hours) {
+  const box = el('div', { class: 'sess' });
+  if (!it.sessions.length) {
+    box.appendChild(el('div', { class: 'sh', text: '近期沒有可請假的堂次' }));
+    return box;
+  }
+  box.appendChild(el('div', { class: 'sh', text: '近期上課・請假（上課前 ' + hours + ' 小時以前）' }));
+  const all = leaveOpen[it.signupId];
+  it.sessions.slice(0, all ? undefined : LEAVE_SHOW).forEach((x) => box.appendChild(leaveRow(x, hours)));
+  if (!all && it.sessions.length > LEAVE_SHOW) {
+    box.appendChild(el('button', { class: 'more', type: 'button', text: '顯示其他 ' + (it.sessions.length - LEAVE_SHOW) + ' 堂 ▾', onclick: (e) => {
+      leaveOpen[it.signupId] = true;
+      const nb = leaveBlock(it, hours);
+      box.replaceWith(nb);
+    } }));
+  }
+  return box;
+}
+
+/** 請假／取消請假按鈕＋逾時提醒（我的報名、我的課程共用）；page＝送出後要更新的頁面 */
+function leaveAction(x, hours, page) {
+  if (x.leaveId) {
+    const b = el('button', { class: 'act alt', type: 'button', text: '取消請假' });
+    b.addEventListener('click', () => doLeaveCancel(b, x, page));
+    return { right: b, note: null };
+  }
+  const b = el('button', { class: 'act danger', type: 'button', text: '請假' });
+  b.addEventListener('click', () => doLeave(b, x, page));
+  return { right: b, note: x.late ? el('div', { class: 'note warn', text: '不到 ' + hours + ' 小時，屬逾時請假' }) : null };
+}
+
+function leaveRow(x, hours) {
+  let right;
+  let note = null;
+  if (x.otherStatus) {
+    right = el('span', { class: 'note', text: '已登記：' + x.otherStatus });
+  } else {
+    ({ right, note } = leaveAction(x, hours, 'my'));
+  }
+  return el('div', { class: 'srow' }, [
+    el('div', {}, [
+      el('div', { class: 'sw' }, [el('span', { text: x.when }), x.leaveId ? el('span', { class: 'badge warn', text: '已請假' }) : null]),
+      x.lesson ? el('div', { class: 'sl', text: '第 ' + x.lesson + ' 堂' }) : null,
+      note,
+    ]),
+    right,
+  ]);
+}
+
+/**
+ * 請假在兩頁都能操作：page＝my／courses
+ * GAS 回傳送出那一頁的最新資料（1 個請求）→ 直接重畫；另一頁的記憶清掉，下次開啟時背景更新
+ * 成功用 toast（不跳回頂端）；逾時請假與錯誤用頁首 banner
+ */
+const LEAVE_PAGES = {
+  my: { banner: 'myBanner', render: (d) => renderMy(d, false), reload: () => openMy(true), other: 'courses' },
+  courses: { banner: 'crsBanner', render: (d) => renderCourses(d, false), reload: () => openCourses(true), other: 'my' },
+};
+
+function afterLeave(page, r, okText, warn) {
+  const pg = LEAVE_PAGES[page];
+  delete app.mem[pg.other];
+  if (r.data[page]) { savePage(page, r.data[page]); pg.render(r.data[page]); } else pg.reload(); // 頁面資料沒回來 → 重讀這一頁
+  if (warn) banner(pg.banner, okText, true);
+  else toast(okText);
+}
+
+async function doLeave(btn, x, page) {
+  if (!armed(btn, '確定請假？')) return;
+  const forId = x.who && !x.who.self ? x.who.id : ''; // v3.7：替家人請假
+  const r = await send(btn, { action: 'leave', submissionId: newId(), sessionId: x.sessionId, forId: forId, page: page }, '送出中…');
+  if (!r.ok) return banner(LEAVE_PAGES[page].banner, r.message, true);
+  afterLeave(page, r, '已請假：' + (forId ? '【' + x.who.name + '】' : '') + x.when + (r.data.late ? '（逾時請假，依課程規定處理）' : ''), r.data.late);
+}
+
+async function doLeaveCancel(btn, x, page) {
+  if (!armed(btn, '確定取消請假？')) return;
+  const r = await send(btn, { action: 'leaveCancel', leaveId: x.leaveId, page: page }, '處理中…');
+  if (!r.ok) return banner(LEAVE_PAGES[page].banner, r.message, true);
+  afterLeave(page, r, '已取消請假：' + x.when);
+}
+
+// ================================================================
+// v3.8：我的課程（課表、每堂狀態、剩餘堂數）
+// ================================================================
+async function openCourses(force) {
+  return pageLoad('courses', { action: 'myCourses' }, renderCourses, 'viewCourses', { force: force });
+}
+
+const crsState = { filter: 'all' };
+const crsOpen = {}; // 展開已上過的堂次（班級ID|學員ID）
+
+function renderCourses(d, stale) {
+  banner('crsBanner', '');
+  const fam = d.family || [];
+  const fbar = $('crsFilter');
+  fbar.innerHTML = '';
+  fbar.classList.toggle('hidden', !fam.length);
+  if (!fam.length || (crsState.filter !== 'all' && crsState.filter !== myId() && !fam.some((f) => f.id === crsState.filter))) crsState.filter = 'all';
+  if (fam.length) {
+    [{ id: 'all', name: '全部' }, { id: myId(), name: '我' }].concat(fam).forEach((p) => fbar.appendChild(el('button', {
+      type: 'button', class: 'chip' + (crsState.filter === p.id ? ' on' : ''), text: p.name, onclick: () => { crsState.filter = p.id; renderCourses(d, stale); },
+    })));
+  }
+  const mine = (x) => crsState.filter === 'all' || ((x.who && x.who.id) || x.id || myId()) === crsState.filter;
+  renderLessonsBy($('crsLessons'), (d.lessonsBy || []).filter(mine));
+  const list = $('crsList');
+  list.innerHTML = '';
+  const items = (d.items || []).filter(mine);
+  if (!items.length) {
+    list.appendChild(el('div', { class: 'empty', text: (crsState.filter === 'all' || crsState.filter === myId() ? '目前' : personName(crsState.filter) + '目前') + '沒有上課中的課程' }));
+    list.appendChild(el('button', { class: 'ghost', type: 'button', style: 'margin-top:12px', text: '去報名課程', onclick: () => {
+      if (crsState.filter !== 'all') signupState.who = [crsState.filter];
+      openSignup('class');
+    } }));
+  }
+  items.forEach((it) => list.appendChild(courseCard(it, d.noticeHours || 24)));
+  setViewStale('viewCourses', stale);
+  show('viewCourses', '我的課程');
+}
+
+function courseCard(it, hours) {
+  const head = el('div', { class: 't' }, [whoTag(it.who), el('span', { text: it.title }),
+    it.classStatus === '籌備中' ? el('span', { class: 'badge grey', text: '待成班' }) : it.classStatus === '已結束' ? el('span', { class: 'badge grey', text: '已結束' }) : null]);
+  const rows = [head, el('div', { class: 's', text: it.when }), el('div', { class: 'm', text: [it.venue, it.courtName].filter(Boolean).join('・') })];
+  if (!it.datesVisible) {
+    rows.push(el('div', { class: 'note', style: 'margin-top:6px', text: '成班確認後公布課表，會用 LINE 通知你。' }));
+    return el('div', { class: 'item' }, rows);
+  }
+  if (it.lessons) rows.push(el('div', { class: 'note', style: 'margin-top:4px', text: '已上 ' + it.attended + '／' + it.lessons + ' 堂' }));
+  const box = el('div', { class: 'sess' });
+  const key = it.id + '|' + ((it.who && it.who.id) || '');
+  const past = it.sessions.filter((x) => x.past);
+  const upcoming = it.sessions.filter((x) => !x.past);
+  if (past.length) {
+    if (crsOpen[key]) past.forEach((x) => box.appendChild(courseRow(x, it.who, hours)));
+    else box.appendChild(el('button', { class: 'more', type: 'button', text: '已上過 ' + past.length + ' 堂 ▸', onclick: () => {
+      crsOpen[key] = true;
+      box.replaceWith(courseCard(it, hours).querySelector('.sess'));
+    } }));
+  }
+  upcoming.forEach((x) => box.appendChild(courseRow(x, it.who, hours)));
+  if (!it.sessions.length) box.appendChild(el('div', { class: 'sh', text: '課表尚未排定' }));
+  rows.push(box);
+  if (upcoming.some((x) => x.canLeave)) rows.push(el('div', { class: 'note', style: 'margin-top:8px', text: '請在上課前 ' + hours + ' 小時以前請假；之後才請假屬於逾時請假。' }));
+  return el('div', { class: 'item' }, rows);
+}
+
+const SESS_BADGE = { 出席: '', 遲到: 'wait', 補課出席: '', 請假: 'warn', 缺席: 'warn', 停課: 'grey', 改期: 'grey', 未點名: 'grey' };
+
+function courseRow(x, who, hours) {
+  const tone = x.status in SESS_BADGE ? SESS_BADGE[x.status] : 'grey';
+  const badge = x.status === '未上課'
+    ? (x.next ? el('span', { class: 'badge', text: '下一堂' }) : null)
+    : el('span', { class: 'badge' + (tone ? ' ' + tone : ''), text: x.status });
+  // v3.8：還沒上的課可直接請假／取消請假（狀態標在日期旁）
+  const act = x.canLeave ? leaveAction(Object.assign({ who: who }, x), hours, 'courses') : null;
+  return el('div', { class: 'srow' + (x.past ? ' past' : '') + (x.next ? ' next' : '') }, [
+    el('div', {}, [
+      el('div', { class: 'sw' }, [el('span', { text: x.when }), act ? badge : null]),
+      x.lesson ? el('div', { class: 'sl', text: '第 ' + x.lesson + ' 堂' }) : null,
+      act ? act.note : null,
+    ]),
+    act ? act.right : badge,
   ]);
 }
 
@@ -1651,6 +1829,7 @@ async function doCancel(btn, it) {
   const r = await send(btn, { action: 'cancel', signupId: it.signupId }, '取消中…');
   if (!r.ok) return banner('myBanner', r.message, true);
   app.optAt = 0; // 報名頁的名額下次背景更新
+  delete app.mem.courses; // v3.8
   if (r.data.my) { savePage('my', r.data.my); renderMy(r.data.my, false); } else await openMy(true);
   banner('myBanner', '已取消：' + (it.who && !it.who.self ? '【' + it.who.name + '】' : '') + it.title);
 }
@@ -1970,116 +2149,6 @@ function renderCheckin(r, venueId) {
 }
 
 // ================================================================
-// 請假
-// ================================================================
-async function openLeave(force) {
-  return pageLoad('leave', { action: 'leaveList' }, renderLeave, 'viewLeave', { force: force });
-}
-
-const leaveState = { filter: 'all' }; // v3.7：先選家人，再選堂次
-
-function renderLeave(d, stale) {
-  setViewStale('viewLeave', stale);
-  banner('leaveBanner', '請在上課前 ' + d.noticeHours + ' 小時以前請假；之後才請假屬於逾時請假，依課程規定處理。');
-  const list = $('leaveList');
-  list.innerHTML = '';
-  const fam = d.family || [];
-  const fbar = $('leaveFilter');
-  fbar.innerHTML = '';
-  fbar.classList.toggle('hidden', !fam.length);
-  if (!fam.length || (leaveState.filter !== 'all' && leaveState.filter !== myId() && !fam.some((f) => f.id === leaveState.filter))) leaveState.filter = 'all';
-  if (fam.length) {
-    [{ id: 'all', name: '全部' }, { id: myId(), name: '我' }].concat(fam).forEach((p) => fbar.appendChild(el('button', {
-      type: 'button', class: 'chip' + (leaveState.filter === p.id ? ' on' : ''), text: p.name, onclick: () => { leaveState.filter = p.id; renderLeave(d, stale); },
-    })));
-  }
-  const pick = (arr) => (leaveState.filter === 'all' ? arr : arr.filter((it) => ((it.who && it.who.id) || myId()) === leaveState.filter));
-  const items = pick(d.items);
-  const gs = pick(d.gatherings || []);
-  if (gs.length) list.appendChild(el('h2', { class: 'sec', text: '課程' }));
-  if (!items.length) list.appendChild(el('div', { class: 'empty', text: '近期沒有可請假的課程' }));
-  items.forEach((it) => list.appendChild(leaveCard(it, d.noticeHours)));
-  // v3.3：球敘不用請假，取消報名即可（名額會釋出給候補）
-  if (gs.length) {
-    list.appendChild(el('h2', { class: 'sec', text: '球敘' }));
-    list.appendChild(el('div', { class: 'note', style: 'margin:-2px 0 8px', text: '球敘不用請假，不能參加請直接取消報名，名額會釋出給候補。' }));
-    gs.forEach((it) => list.appendChild(leaveGatherCard(it)));
-  }
-  show('viewLeave', '請假');
-}
-
-function leaveGatherCard(it) {
-  let right;
-  if (it.canCancel) {
-    right = el('button', { class: 'act danger', type: 'button', text: it.status === '候補' ? '取消候補' : '取消報名' });
-    right.addEventListener('click', () => doLeaveGatherCancel(right, it));
-  } else {
-    right = el('span', { class: 'note', text: it.cancelNote || '請點選單「聯絡我們」' });
-  }
-  return el('div', { class: 'item' }, [
-    el('div', { class: 't' }, [whoTag(it.who), el('span', { text: it.when }), it.status === '候補' ? el('span', { class: 'badge wait', text: '候補中' }) : null]),
-    el('div', { class: 's', text: it.title }),
-    el('div', { class: 'm', text: [it.venue, it.courtName].filter(Boolean).join('・') }),
-    el('div', { class: 'foot' }, [el('span'), right]),
-  ]);
-}
-
-/** 在請假頁取消球敘：送出後直接從清單移除，並用回傳的資料更新「我的報名」（不再讀） */
-async function doLeaveGatherCancel(btn, it) {
-  if (!armed(btn, '確定取消？')) return;
-  const r = await send(btn, { action: 'cancel', signupId: it.signupId }, '取消中…');
-  if (!r.ok) return banner('leaveBanner', r.message, true);
-  app.optAt = 0;
-  if (r.data.my) savePage('my', r.data.my);
-  const cur = (app.mem.leave || {}).data;
-  if (cur) {
-    const next = Object.assign({}, cur, { gatherings: (cur.gatherings || []).filter((x) => x.signupId !== it.signupId) });
-    savePage('leave', next);
-    renderLeave(next, false);
-  } else await openLeave(true);
-  banner('leaveBanner', '已取消：' + it.title + '　' + it.when);
-}
-
-function leaveCard(it, hours) {
-  let right;
-  let note = null;
-  if (it.otherStatus) {
-    right = el('span', { class: 'note', text: '已登記：' + it.otherStatus });
-  } else if (it.leaveId) {
-    right = el('button', { class: 'act alt', type: 'button', text: '取消請假' });
-    right.addEventListener('click', () => doLeaveCancel(right, it));
-  } else {
-    right = el('button', { class: 'act danger', type: 'button', text: '請假' });
-    right.addEventListener('click', () => doLeave(right, it));
-    if (it.late) note = el('div', { class: 'note warn', text: '距離上課不到 ' + hours + ' 小時，屬於逾時請假' });
-  }
-  return el('div', { class: 'item' }, [
-    el('div', { class: 't' }, [whoTag(it.who), el('span', { text: it.when }), it.leaveId ? el('span', { class: 'badge warn', text: '已請假' }) : null]),
-    el('div', { class: 's', text: it.title }),
-    el('div', { class: 'm', text: [it.venue, it.lesson ? '第 ' + it.lesson + ' 堂' : ''].filter(Boolean).join('・') }),
-    note,
-    el('div', { class: 'foot' }, [el('span'), right]),
-  ]);
-}
-
-async function doLeave(btn, it) {
-  if (!armed(btn, '確定請假？')) return;
-  const forId = it.who && !it.who.self ? it.who.id : ''; // v3.7：替家人請假
-  const r = await send(btn, { action: 'leave', submissionId: newId(), sessionId: it.sessionId, forId: forId }, '送出中…');
-  if (!r.ok) return banner('leaveBanner', r.message, true);
-  if (r.data.leave) { savePage('leave', r.data.leave); renderLeave(r.data.leave, false); } else await openLeave(true);
-  banner('leaveBanner', '已請假：' + (forId ? '【' + it.who.name + '】' : '') + it.when + (r.data.late ? '（逾時請假）' : ''), r.data.late);
-}
-
-async function doLeaveCancel(btn, it) {
-  if (!armed(btn, '確定取消請假？')) return;
-  const r = await send(btn, { action: 'leaveCancel', leaveId: it.leaveId }, '處理中…');
-  if (!r.ok) return banner('leaveBanner', r.message, true);
-  if (r.data.leave) { savePage('leave', r.data.leave); renderLeave(r.data.leave, false); } else await openLeave(true);
-  banner('leaveBanner', '已取消請假：' + it.when);
-}
-
-// ================================================================
 // 啟動
 // ================================================================
 function readParams() {
@@ -2102,7 +2171,8 @@ function route(page) {
   if (!page && app.params.type && app.params.id) return openTarget(app.params.type, app.params.id);
   if (page === 'signup') return openSignup(app.params.tab);
   if (page === 'my') return openMy();
-  if (page === 'leave') return openLeave();
+  if (page === 'leave') return openMy(); // v3.8：請假併入我的報名（舊連結）
+  if (page === 'courses') return openCourses();
   if (page === 'gathering') return openGathering(app.params.id || ''); // v3：沒帶 id＝今日球敘
   if (page === 'unformed') return openUnformed(app.params.signup);
   if (page === 'checkin') return openCheckin(app.params.venue);
@@ -2154,7 +2224,8 @@ async function main() {
   // v3.3：我的報名／請假／球敘 也先畫上次的資料；init 一併帶回這一頁的最新資料（只要 1 個請求）
   const PAGE_DEF = {
     my: { key: 'my', render: renderMy, view: 'viewMy' },
-    leave: { key: 'leave', render: renderLeave, view: 'viewLeave' },
+    leave: { key: 'my', render: renderMy, view: 'viewMy' }, // v3.8：舊連結 → 我的報名
+    courses: { key: 'courses', render: renderCourses, view: 'viewCourses' },
     gathering: { key: 'g:' + (app.params.id || 'today'), render: renderGatheringPage, view: 'viewGathering' },
   };
   const pdef = PAGE_DEF[page];
