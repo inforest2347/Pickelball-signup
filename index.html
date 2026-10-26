@@ -429,7 +429,7 @@
 const LIFF_ID = '2011932114-Fh1txi0y';          // 例：2001234567-AbCdEfGh
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzEMw17w0AZ_-E_MrQq2kBamkGTpCVNa7VGEA8-R-IYCP4x-9Hf4L9w8WRdvRH2iz-a/exec';  // https://script.google.com/macros/s/…/exec
 const SHOW_ERROR_CODE = false;                    // 測試期間顯示錯誤代碼；上線後改為 false
-const OA_BASIC_ID = '@251nkmih';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
+const OA_BASIC_ID = '@xxxxxxx';                   // v3：學員官方帳號的 Basic ID（含 @），加好友按鈕用
 
 // ================================================================
 // 共用
@@ -1453,6 +1453,11 @@ function openConfirm(it, court, payload, pv) {
   show('viewConfirm', '確認報名');
 }
 
+/** v3.9：名額保留期限說明（球敘開始／課程第一堂前 6 小時） */
+function releaseText(rel) {
+  return rel ? '\n' + rel + ' 前仍未完成付款，名額將取消。' : '';
+}
+
 function signupDone(it, court, d) {
   // v3.3：報名頁直接標成已報名／候補，我的報名用回傳的最新資料（回到這兩頁都不必再讀）
   const results = d.results || [{ id: myId(), self: true, status: d.status, rank: d.rank, amount: d.amount, kind: d.kind, credit: d.credit, deadline: d.deadline }];
@@ -1480,7 +1485,7 @@ function signupDone(it, court, d) {
     if (x.credit) lines.push('已用先前已付款項折抵 ' + money(x.credit));
     if (x.amount > 0) {
       lines.push('');
-      lines.push((x.kind === '首堂' ? '首堂費用 ' : '應繳 ') + money(x.amount) + (x.deadline ? '，請於 ' + x.deadline + ' 前完成付款，逾期名額會自動釋出。' : '。'));
+      lines.push((x.kind === '首堂' ? '首堂費用 ' : '應繳 ') + money(x.amount) + (x.deadline ? '，請於 ' + x.deadline + ' 前完成付款。' : '。') + releaseText(x.release));
       if (app.init.paymentInfo) lines.push(app.init.paymentInfo);
       if (x.kind === '首堂') lines.push('成班後會再通知開課日期與尾款。');
     }
@@ -1493,18 +1498,20 @@ function signupDone(it, court, d) {
   const lines = [it.title, (it.timeLabel || it.when) + (court ? '　' + court.name : ''), ''];
   let total = 0;
   let deadline = '';
+  let release = '';
   results.forEach((x) => {
     const name = x.self ? '我' : x.name;
     if (x.status === '已報名') {
       total += x.amount || 0;
       deadline = deadline || x.deadline;
+      release = release || x.release;
       lines.push('✓ ' + name + '：已報名' + (x.amount ? '（' + money(x.amount) + '）' : ''));
     } else if (x.status === '候補') lines.push('⏳ ' + name + '：候補第 ' + x.rank + ' 位');
     else lines.push('－ ' + name + '：未報名（' + x.note + '）');
   });
   if (total > 0) {
     lines.push('');
-    lines.push('合計應繳 ' + money(total) + (deadline ? '，請於 ' + deadline + ' 前完成付款，逾期名額會自動釋出。' : '。'));
+    lines.push('合計應繳 ' + money(total) + (deadline ? '，請於 ' + deadline + ' 前完成付款。' : '。') + releaseText(release));
     if (app.init.paymentInfo) lines.push(app.init.paymentInfo);
   }
   const allWait = done.every((x) => x.status !== '已報名');
@@ -1560,7 +1567,7 @@ function renderMy(d, stale) {
       route('signup');
     } }));
   }
-  shown.forEach((it) => list.appendChild(myCard(it, d.noticeHours || 24)));
+  shown.forEach((it) => list.appendChild(myCard(it, d.noticeHours || 8)));
   $('myProfileLink').textContent = familyOn() ? '基本資料／我的家人' : '修改基本資料';
   $('friendStrip').classList.toggle('hidden', app.friend !== false);
   setViewStale('viewMy', stale);
@@ -1638,7 +1645,7 @@ function myCard(it, hours) {
   }
   const meta = [it.kind, it.venue, it.courtName].filter(Boolean).join('・');
   let extra = null;
-  if (it.deadline && payWarn) extra = el('div', { class: 'note warn', style: 'margin-top:4px', text: '付款期限 ' + it.deadline + '，逾期名額會自動釋出' });
+  if (it.deadline && payWarn) extra = el('div', { class: 'note warn', style: 'margin-top:4px', text: '付款期限 ' + it.deadline + (it.release ? '；' + it.release + ' 前仍未付款，名額將取消' : '') });
   if (it.status === '保留中') extra = el('div', { class: 'note', style: 'margin-top:4px', text: '這一期未成班。' + (it.choice === '順延' ? '目前選擇：順延（同據點下一期開班時通知你）' : it.choice ? '目前選擇：' + it.choice : '尚未選擇（預設順延）') });
   if (it.classStatus === '籌備中' && it.status === '已報名') extra = el('div', { class: 'note', style: 'margin-top:4px', text: '滿 ' + it.minSize + ' 人（已付首堂）成班，成班確認後通知開課日期與尾款。' });
   return el('div', { class: 'item' }, [
@@ -1663,7 +1670,7 @@ function leaveBlock(it, hours) {
     box.appendChild(el('div', { class: 'sh', text: '近期沒有可請假的堂次' }));
     return box;
   }
-  box.appendChild(el('div', { class: 'sh', text: '近期上課・請假（上課前 ' + hours + ' 小時以前）' }));
+  box.appendChild(el('div', { class: 'sh', text: '近期上課・請假（上課前 ' + hours + ' 小時以前；之後請聯絡客服）' }));
   const all = leaveOpen[it.signupId];
   it.sessions.slice(0, all ? undefined : LEAVE_SHOW).forEach((x) => box.appendChild(leaveRow(x, hours)));
   if (!all && it.sessions.length > LEAVE_SHOW) {
@@ -1676,16 +1683,25 @@ function leaveBlock(it, hours) {
   return box;
 }
 
-/** 請假／取消請假按鈕＋逾時提醒（我的報名、我的課程共用）；page＝送出後要更新的頁面 */
+/**
+ * 請假／取消請假按鈕（我的報名、我的課程共用）；page＝送出後要更新的頁面
+ * v3.9：上課前 hours 小時內（late）或本期請假已達上限（full）→ 不顯示請假按鈕，請聯絡客服
+ */
 function leaveAction(x, hours, page) {
   if (x.leaveId) {
     const b = el('button', { class: 'act alt', type: 'button', text: '取消請假' });
     b.addEventListener('click', () => doLeaveCancel(b, x, page));
     return { right: b, note: null };
   }
+  if (x.late || x.full) {
+    return {
+      right: el('span', { class: 'note', text: '請聯絡客服' }),
+      note: el('div', { class: 'note warn', text: x.late ? '上課前 ' + hours + ' 小時內無法在 LINE 請假' : '本期請假已達上限' }),
+    };
+  }
   const b = el('button', { class: 'act danger', type: 'button', text: '請假' });
   b.addEventListener('click', () => doLeave(b, x, page));
-  return { right: b, note: x.late ? el('div', { class: 'note warn', text: '不到 ' + hours + ' 小時，屬逾時請假' }) : null };
+  return { right: b, note: null };
 }
 
 function leaveRow(x, hours) {
@@ -1729,7 +1745,7 @@ async function doLeave(btn, x, page) {
   const forId = x.who && !x.who.self ? x.who.id : ''; // v3.7：替家人請假
   const r = await send(btn, { action: 'leave', submissionId: newId(), sessionId: x.sessionId, forId: forId, page: page }, '送出中…');
   if (!r.ok) return banner(LEAVE_PAGES[page].banner, r.message, true);
-  afterLeave(page, r, '已請假：' + (forId ? '【' + x.who.name + '】' : '') + x.when + (r.data.late ? '（逾時請假，依課程規定處理）' : ''), r.data.late);
+  afterLeave(page, r, '已請假：' + (forId ? '【' + x.who.name + '】' : '') + x.when);
 }
 
 async function doLeaveCancel(btn, x, page) {
@@ -1773,7 +1789,7 @@ function renderCourses(d, stale) {
       openSignup('class');
     } }));
   }
-  items.forEach((it) => list.appendChild(courseCard(it, d.noticeHours || 24)));
+  items.forEach((it) => list.appendChild(courseCard(it, d.noticeHours || 8)));
   setViewStale('viewCourses', stale);
   show('viewCourses', '我的課程');
 }
@@ -1801,7 +1817,7 @@ function courseCard(it, hours) {
   upcoming.forEach((x) => box.appendChild(courseRow(x, it.who, hours)));
   if (!it.sessions.length) box.appendChild(el('div', { class: 'sh', text: '課表尚未排定' }));
   rows.push(box);
-  if (upcoming.some((x) => x.canLeave)) rows.push(el('div', { class: 'note', style: 'margin-top:8px', text: '請在上課前 ' + hours + ' 小時以前請假；之後才請假屬於逾時請假。' }));
+  if (upcoming.some((x) => x.canLeave)) rows.push(el('div', { class: 'note', style: 'margin-top:8px', text: '請在上課前 ' + hours + ' 小時以前請假；之後請點「聯絡客服」。' }));
   return el('div', { class: 'item' }, rows);
 }
 
